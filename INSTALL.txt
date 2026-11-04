@@ -1,0 +1,451 @@
+===============================================================================
+ AI CCTV - XODIMLARNI TANISH VA JIHOZLAR INVENTARIZATSIYASI
+ GIT CLONE'DAN KEYIN TO'LIQ O'RNATISH VA ISHGA TUSHIRISH QO'LLANMASI
+===============================================================================
+
+ Bu fayl: `git clone` qilgandan keyin loyihani YOLO va boshqa AI
+ komponentlari bilan to'liq ishga tushirish uchun qadam-baqadam ko'rsatma.
+
+ Tekshirilgan muhit : Windows 11 22H2, Python 3.11.9 x64, CPU only (GPU yo'q)
+ Tekshirilgan holat  : 281 test o'tadi, server 127.0.0.1:8000 da ishlaydi
+ Yangilangan sana    : 2026-11-04
+
+ Mundarija:
+   0. Tezkor boshlash (tajribali foydalanuvchi uchun)
+   1. Talablar
+   2. Kodni olish
+   3. Virtual muhit
+   4. Kutubxonalar (3 qadam - tartib muhim!)
+   5. .env fayli
+   6. Model fayllari (YOLO + InsightFace)
+   7. Ishga tushirish
+   8. Kamerani ulash va AI ni tekshirish
+   9. Google Sheets (ixtiyoriy)
+  10. Muammolar va yechimlar
+  11. Yangilash
+  12. Repo'da nima yo'q (gitignore)
+  13. Foydali fayllar
+
+
+-------------------------------------------------------------------------------
+ 0. TEZKOR BOSHLASH
+-------------------------------------------------------------------------------
+
+   git clone https://github.com/texdxm-admin/dxm-tex-admins.git
+   cd dxm-tex-admins
+   py -3.11 -m venv .venv
+   .venv\Scripts\python.exe -m pip install --upgrade pip
+   .venv\Scripts\python.exe -m pip install -r requirements.txt
+   .venv\Scripts\python.exe -m pip install torch==2.14.1 torchvision==0.29.1 --index-url https://download.pytorch.org/whl/cpu
+   .venv\Scripts\python.exe -m pip install -r requirements-ai.txt
+   copy .env.example .env
+   (keyin .env ni tahrirlang: APP_SECRET_KEY, BOOTSTRAP_ADMIN_PASSWORD, YOLO_*)
+   .venv\Scripts\python.exe run.py
+
+   Brauzer: http://127.0.0.1:8000  ->  .env dagi admin login/parol bilan kiring.
+
+
+-------------------------------------------------------------------------------
+ 1. TALABLAR
+-------------------------------------------------------------------------------
+
+   - Windows 10/11 x64 (tekshirilgan: Windows 11 22H2)
+   - Python 3.11.x x64 (tekshirilgan: 3.11.9)
+     * 3.12 / 3.13 da torch va insightface wheel'lari mos kelmasligi mumkin.
+     * O'rnatishda "Add python.exe to PATH" bandini belgilang.
+     * Tekshirish: py -3.11 -V
+   - Internet: faqat birinchi o'rnatishda (paketlar + model yuklab olish uchun)
+   - Disk: ~2.5 GB
+       .venv (kutubxonalar)          ~1.4 GB
+       torch + torchvision (CPU)     ~0.3 GB
+       buffalo_l (yuz modeli)        ~0.6 GB   (C:\Users\<USER>\.insightface)
+       yolo26x.pt                    ~0.11 GB
+   - RAM: 8 GB tavsiya
+   - Kamera: USB webcam yoki RTSP IP kamera (majburiy emas - SIMULATION_MODE bor)
+   - GPU shart emas: YOLO_DEVICE=cpu. CPU'da tezlik ~1 FPS (640px), bu normal.
+
+
+-------------------------------------------------------------------------------
+ 2. KODNI OLISH
+-------------------------------------------------------------------------------
+
+   git clone https://github.com/texdxm-admin/dxm-tex-admins.git
+   cd dxm-tex-admins
+
+   DIQQAT: repo'da quyidagilar YO'Q (ataylab, .gitignore da):
+     .env, .venv\, data\, data\models\*.pt, secrets\, dataset\, runs\, logs\
+   Ular 3, 4, 5, 6, 7-bo'limlarda tayyorlanadi.
+
+
+-------------------------------------------------------------------------------
+ 3. VIRTUAL MUHIT
+-------------------------------------------------------------------------------
+
+   py -3.11 -m venv .venv
+   .venv\Scripts\activate
+     (PowerShell uchun: .\.venv\Scripts\Activate.ps1)
+
+   Agar PowerShell "running scripts is disabled" desa:
+     Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+
+   Tekshirish:
+     python -V            -> Python 3.11.9
+     where python         -> ...\dxm-tex-admins\.venv\Scripts\python.exe
+
+   (Istalgan buyruqni aktivatsiyasiz ham ishlatish mumkin:
+    .venv\Scripts\python.exe <buyruq>)
+
+
+-------------------------------------------------------------------------------
+ 4. KUTUBXONALAR - 3 QADAM, TARTIB MUHIM
+-------------------------------------------------------------------------------
+
+   4.1 ASOSIY (web, baza, OpenCV, Excel, hisobot):
+
+       .venv\Scripts\python.exe -m pip install --upgrade pip
+       .venv\Scripts\python.exe -m pip install -r requirements.txt
+
+       Tarkibi (pinned): fastapi, starlette, uvicorn, Jinja2, MarkupSafe,
+       SQLAlchemy, numpy 2.2.6, opencv-python 4.10, Pillow, python-dotenv,
+       tzdata, gspread, google-auth, openpyxl, python-docx, PyYAML,
+       pytest, httpx.
+
+   4.2 TORCH - CPU BUILD (GPU YO'Q bo'lsa ALBATTA shu indeksdan):
+
+       .venv\Scripts\python.exe -m pip install torch==2.14.1 torchvision==0.29.1 --index-url https://download.pytorch.org/whl/cpu
+
+       Bu qadamni o'tkazib yuborsangiz pip PyPI'dan ~2.5 GB CUDA build
+       yuklaydi - bu kompyuterda u ishlatilmaydi (GPU yo'q).
+
+   4.3 AI TO'PLAMI (YOLO + yuz tanish):
+
+       .venv\Scripts\python.exe -m pip install -r requirements-ai.txt
+
+       Tarkibi (pinned): ultralytics==8.4.199, lapx==0.12.1,
+       torch, torchvision, insightface==2.1, onnxruntime==1.20.1, onnx==1.17.0.
+
+   4.4 TEKSHIRISH:
+
+       .venv\Scripts\python.exe -m pip check
+         -> "No broken requirements found."
+
+       .venv\Scripts\python.exe -c "import torch, ultralytics, insightface, cv2, fastapi; print('torch', torch.__version__); print('ultralytics', ultralytics.__version__); print('cv2', cv2.__version__)"
+         -> torch 2.14.1 / ultralytics 8.4.199 / cv2 4.10.0
+
+   Izoh: lapx ultralytics uchun 'lap' modulini beradi (ByteTrack tracker).
+   Usiz ultralytics har kadrda lap'ni o'zi o'rnatishga urinadi.
+
+
+-------------------------------------------------------------------------------
+ 5. .ENV FAYLI
+-------------------------------------------------------------------------------
+
+   copy .env.example .env
+
+   Notepad'da ochib MAJBURIY tahrirlang:
+
+     APP_SECRET_KEY=<tasodifiy uzun satr>
+       yaratish:  py -c "import secrets; print(secrets.token_urlsafe(48))"
+     BOOTSTRAP_ADMIN_PASSWORD=<o'z parolingiz>
+       (faqat users jadvali bo'sh bo'lganda yaratiladi)
+     APP_HOST=127.0.0.1
+       faqat shu kompyuter. Lokal tarmoqdan kirish uchun: 0.0.0.0
+     APP_PORT=8000
+     DATABASE_URL=sqlite:///./data/inventory.db
+
+     YOLO_MODEL_PATH=data/models/equipment_best.pt
+     YOLO_FALLBACK_MODEL=data/models/yolo26x.pt
+     YOLO_CONFIDENCE=0.35
+     YOLO_IMAGE_SIZE=640
+     YOLO_DEVICE=cpu
+     YOLO_TRACKER=bytetrack.yaml
+     YOLO_DEDUPE_IOU=0.6
+
+     FACE_MODEL_NAME=buffalo_l
+     FACE_PROVIDERS=CPUExecutionProvider
+     FACE_DETECTION_SIZE=640x640
+     FACE_SIMILARITY_THRESHOLD=0.45
+
+     PROCESSING_FPS=10
+     PROCESSING_WIDTH=1280
+     PROCESSING_HEIGHT=720
+     MAX_FRAME_QUEUE=4
+     SIMULATION_MODE=false
+
+     GOOGLE_SHEETS_ENABLED=false
+       credentials tayyor bo'lmaguncha false qoldiring (9-bo'lim).
+
+   Model yo'li haqida: YOLO_MODEL_PATH topilmasa YOLO_FALLBACK_MODEL olinadi;
+   u ham topilmasa ultralytics internetdan modelni yuklaydi.
+   Yo'lni mutlaq (C:\...\data\models\yolo26x.pt) yoki loyihaga nisbatan
+   (data/models/yolo26x.pt) yozish mumkin.
+
+
+-------------------------------------------------------------------------------
+ 6. MODEL FAYLLARI (repo'da yo'q - .gitignore da)
+-------------------------------------------------------------------------------
+
+   6.1 YOLO OG'IRLIKLARI -> data\models\ papkasiga:
+
+       yolo26x.pt           113 MB   umumiy model (COCO 80 sinf) - asosiy fallback
+       equipment_desk_*.pt   21 MB   ofis jihozlari uchun o'qitilgan model
+       yolo26m.pt            42 MB   ixtiyoriy
+       yolo26s.pt            19 MB   ixtiyoriy
+
+       Agar equipment_best.pt bo'lmasa -> yolo26x.pt ishlatiladi.
+       Agar ikkisi ham bo'lmasa       -> ultralytics yolo26x.pt ni yuklab oladi.
+
+       Tekshirish:
+         .venv\Scripts\python.exe -c "from pathlib import Path; print([p.name for p in Path('data/models').glob('*.pt')])"
+
+   6.2 INSIGHTFACE buffalo_l (yuz modeli, ~601 MB, 6 fayl):
+
+       Joyi: C:\Users\<USERNAME>\.insightface\models\buffalo_l\
+
+       Internet bo'lsa birinchi yuz tanishda avtomatik yuklanadi.
+       Offline bo'lsa: ishlab turgan boshqa kompyuterdan shu papkani
+       to'liq ko'chirib qo'ying.
+
+       Yuklanmasa dastur ishlaydi, lekin yuz tanish "unavailable" bo'ladi
+       (yashirin xato qilmaydi - log'da sababini yozadi).
+
+
+-------------------------------------------------------------------------------
+ 7. ISHGA TUSHIRISH
+-------------------------------------------------------------------------------
+
+   Variant A - skript bilan (tavsiya):
+     run.bat
+     * venv yo'q bo'lsa yaratadi
+     * .env yo'q bo'lsa .env.example dan ko'chiradi
+     * requirements.txt ni o'rnatadi (faqat ASOSIY; AI paketlari EMAS)
+     Shuning uchun 4.2 va 4.3 qadamlarini bir marta qo'lda bajaring.
+
+   Variant B - to'g'ridan-to'g'ri:
+     .venv\Scripts\python.exe run.py
+     .venv\Scripts\python.exe run.py --port 9000
+     .venv\Scripts\python.exe run.py --reload          (ishlab chiqish rejimi)
+
+   Brauzer: http://127.0.0.1:8000
+   Login: .env dagi BOOTSTRAP_ADMIN_USERNAME / BOOTSTRAP_ADMIN_PASSWORD
+   (default: admin / Admin123! - production'da albatta o'zgartiring)
+
+   BIRINCHI ISHGA TUSHISHDA AVTOMATIK YARATILADI:
+     - data\inventory.db  (jadvallar + jihoz kategoriyalari + tanish sozlamalari)
+     - bootstrap administrator (faqat users jadvali bo'sh bo'lsa)
+     - SIM-01 simulyatsiya kamerasi (o'chirilgan holatda, offline sinov uchun)
+     - data\employees, data\evidence, data\models, logs\, secrets\ papkalari
+     - log'lar: logs\app.log
+
+
+-------------------------------------------------------------------------------
+ 8. KAMERANI ULASH VA AI NI TEKSHIRISH
+-------------------------------------------------------------------------------
+
+   8.1 Kamera qo'shish: brauzerda /cameras sahifasi -> "Kamera qo'shish"
+
+       USB webcam:
+         code        : CAM
+         source_type : usb
+         source      : 0            (1, 2 ... boshqa kameralar)
+
+       RTSP IP kamera:
+         source_type : rtsp
+         source      : rtsp://user:pass@192.168.1.10:554/stream1
+
+       Video fayl bilan sinash:
+         source_type : file
+         source      : data/test.mp4
+
+       Simulyatsiya (kamera yo'q):
+         source_type : simulation     yoki  .env: SIMULATION_MODE=true
+
+   8.2 Kamera ro'yxatida "Yoqish" (toggle) -> pipeline ishga tushadi.
+
+   8.3 Sahifalar:
+         /            bosh sahifa: statistika va oxirgi hodisalar
+         /live        jonli oqim (annotatsiya: bbox + class + conf)
+         /cameras     kameralar boshqaruvi
+         /review      hodisalarni tasdiqlash / rad etish (inventarga ta'sir qiladi)
+         /employees   xodimlar, /employees/{code} - rasm yuklash
+         /equipment   jihoz kategoriyalari va aniqlash sozlamalari
+         /inventory   inventar jadvali
+         /movements   harakatlar jurnali
+         /reports     hisobotlar, /downloads - Excel eksport
+         /sheets      Google Sheets, /settings - tizim sozlamalari
+         /data        ma'lumotlar, /training - model o'qitish bo'limi
+
+   8.4 TEZKOR TEKSHIRUV (brauzer, login qilgan holda yoki terminalda):
+
+         http://127.0.0.1:8000/healthz
+         http://127.0.0.1:8000/api/cameras/CAM/status
+             -> fps, frames_dropped, frames_processed, active_tracks, events
+         http://127.0.0.1:8000/api/cameras/CAM/snapshot
+         http://127.0.0.1:8000/api/cameras/CAM/stream   (MJPEG oqim)
+
+   8.5 AI HOLATINI TEKSHIRISH (terminalda, server ishlab turganda):
+         type logs\app.log  (yoki PowerShell: Get-Content logs\app.log -Tail 40)
+       Kutilgan yozuvlar:
+         - "YOLO model yuklanmoqda: <model yo'li>"
+           (fallback ishlatilsa qo'shimcha ogohlantirish yoziladi)
+         - "InsightFace yuklanmoqda: model=buffalo_l provayderlar=('CPUExecutionProvider',)"
+
+   8.6 KAMERA DIAGNOSTIKASI (server to'xtatilgan holda ishlatiladi):
+         .venv\Scripts\python.exe scripts\test_camera.py --type usb --source 0 --seconds 8
+         .venv\Scripts\python.exe scripts\test_camera.py --type rtsp --source rtsp://... 
+         (natija: kadrlar data\debug\ ga saqlanadi)
+
+   8.7 KOD BUTUNLIGINI TEKSHIRISH (ixtiyoriy):
+         .venv\Scripts\python.exe -m pytest -q
+         -> 281 passed
+
+
+-------------------------------------------------------------------------------
+ 9. GOOGLE SHEETS (ixtiyoriy)
+-------------------------------------------------------------------------------
+
+   .env:
+     GOOGLE_SHEETS_ENABLED=true
+     GOOGLE_SPREADSHEET_ID=<jadval ID>
+     GOOGLE_SERVICE_ACCOUNT_FILE=secrets/google_service_account.json
+
+   Service account JSON faylini secrets\ papkasiga qo'ying va jadvalni
+   service account email'i bilan "Editor" qilib ulashing.
+
+   Sozlash ustasi (interaktiv):
+     .venv\Scripts\python.exe scripts\connect_google_sheets.py
+
+   Qo'lda sinxronlash:
+     .venv\Scripts\python.exe scripts\sync_google_sheets.py
+
+   Kalit yoki ID bo'lmasa xizmat ishga tushmaydi, log'ga ogohlantirish yoziladi
+   va dasturning qolgan qismi normal ishlaydi.
+
+
+-------------------------------------------------------------------------------
+ 10. MUAMMOLAR VA YECHIMLAR
+-------------------------------------------------------------------------------
+
+ [Python topilmadi]
+   -> Python 3.11 x64 o'rnating, "Add python.exe to PATH" ni belgilang.
+   -> Tekshirish: py -3.11 -V
+
+ [pip install xatosi / SSL / timeout]
+   -> Internet/proxy ni tekshiring, keyin:
+      .venv\Scripts\python.exe -m pip install --upgrade pip
+
+ [torch ~2.5 GB yuklayapti]
+   -> 4.2 qadamda CPU indeksini ishlatmadingiz. Bekor qilib qaytadan:
+      .venv\Scripts\python.exe -m pip install torch==2.14.1 torchvision==0.29.1 --index-url https://download.pytorch.org/whl/cpu
+
+ [insightface o'rnatilmayapti / "Microsoft Visual C++ 14.0 is required"]
+   -> requirements-ai.txt dagi insightface==2.1 (tayyor wheel) ishlatilsin.
+      0.7.x versiyasi manba kodidan yig'iladi va C++ toolchain talab qiladi.
+
+ [buffalo_l yuklanmadi / yuz tanish ishlamayapti]
+   -> Internet yo'q bo'lsa: C:\Users\<USER>\.insightface\models\buffalo_l
+      papkasini boshqa kompyuterdan ko'chirib qo'ying (~601 MB).
+   -> ONNX Runtime provayderini tekshiring: FACE_PROVIDERS=CPUExecutionProvider
+
+ [Kamera OFFLINE / "Kadr olinmadi"]
+   -> source raqami to'g'rimi (0, 1, 2...).
+   -> Boshqa dastur kamerani egallab turgan bo'lishi mumkin (Zoom, Teams, Camera).
+   -> USB kabel/portni almashtiring.
+   -> Kamera boshqa tizimda ishlashini tekshiring (Windows "Camera" ilovasi).
+   -> scripts\test_camera.py bilan alohida sinang.
+   -> USB'da "open OK, read None" holati uchraydi: shunda tizim
+      CAMERA_RECONNECT_INTERVAL dan boshlab 5, 10, 20... 60 sekundgacha
+      kutib qayta ulanadi - bu xato emas.
+
+ [/live "qotib qoladi" (freeze)]
+   -> Preview kadr tezligi pipeline tezligiga teng: CPU'da ~1 FPS.
+      Ya'ni oqim 8 FPS da yuboriladi, lekin tarkibi sekundiga 1 marta
+      yangilanadi - "qotish" shundan ko'rinadi.
+   -> Yechim: YOLO_IMAGE_SIZE=480, PROCESSING_FPS=5 qilib kamaytiring,
+      yoki GPU qo'shing (YOLO_DEVICE=cuda:0 + CUDA torch).
+   -> Kamera uzilganda preview ham to'xtaydi; logs\app.log da
+      CAMERA_DISCONNECTED yozuvi bo'ladi.
+
+ [Kadr 640x480 chiqadi, 1280x720 emas]
+   -> PROCESSING_WIDTH/HEIGHT faqat KICHRAYTIRISH uchun ishlatiladi.
+      OpenCV manbadan kelgan kadrni kattalashtirmaydi. 1280x720 uchun kamera
+      o'zi shu rejimni berishi kerak.
+
+ [Klaviatura / kichik jihozlar aniqlanmayapti]
+   -> Umumiy yolo26x modeli (COCO) klaviaturani kamdan-kam topadi.
+      Ofis jihozlari uchun equipment_desk_*.pt modelini ishlatish tavsiya etiladi
+      (docs\yolo_training.md - o'qitish yo'riqnomasi).
+   -> Jihoz kategoriyasining minimal ishonch chegarasi 0.70 (equipment sahifasida).
+      Sinov uchun YOLO_CONFIDENCE=0.25 qilib ko'ring.
+
+ [Port band (8000)]
+   -> .venv\Scripts\python.exe run.py --port 9000
+   -> yoki .env: APP_PORT=9000
+
+ [Baza qulflangan / "database is locked"]
+   -> Ikkinchi server nusxasi ishlab turgan bo'lishi mumkin:
+      tasklist | findstr python
+      taskkill /F /IM python.exe   (barcha python jarayonlarini to'xtatadi!)
+   -> Virtual muhit papkasini (venv) nusxalash emas, qaytadan yaratish tavsiya.
+
+ [Login ishlamayapti]
+   -> Administrator faqat users jadvali BO'SH bo'lganda yaratiladi.
+      Mavjud bazada .env dagi parol o'zgarsa ham eski parol qoladi:
+      parolni /settings sahifasidan o'zgartiring yoki
+      data\inventory.db ni zaxiraga olib, yangi baza bilan boshlang.
+
+ [UTF-8 / kirill harflari buzuq ko'rinadi (konsol)]
+   -> Bu faqat Windows konsolining kodlash muammosi; fayllar to'g'ri.
+      PowerShell: $env:PYTHONUTF8=1 ; $env:PYTHONIOENCODING="utf-8"
+
+
+-------------------------------------------------------------------------------
+ 11. YANGILASH
+-------------------------------------------------------------------------------
+
+   git pull origin main
+   .venv\Scripts\python.exe -m pip install -r requirements.txt
+   .venv\Scripts\python.exe -m pip install -r requirements-ai.txt
+
+   .env, data\ va model fayllari tegmaydi (gitignore da).
+   Agar app\ kodi o'zgargan bo'lsa: serverni to'xtatib (Ctrl+C) qayta ishga
+   tushiring.
+
+
+-------------------------------------------------------------------------------
+ 12. REPO'DA NIMA YO'Q (gitignore tufayli)
+-------------------------------------------------------------------------------
+
+   .env                    maxfiy sozlamalar                -> 5-bo'lim
+   .venv\                  kutubxonalar (1.4 GB)            -> 3, 4-bo'lim
+   data\                   baza + evidence + xodim rasmlari  -> 7-bo'lim (avto)
+   data\models\*.pt        model og'irliklari               -> 6-bo'lim
+   secrets\                Google service account kaliti    -> 9-bo'lim
+   dataset\, runs\         o'qitish materiali va natijalari -> kerak bo'lsa alohida
+   logs\, .qoder\          loglar va IDE kesh
+
+
+-------------------------------------------------------------------------------
+ 13. FOYDALI FAYLLAR
+-------------------------------------------------------------------------------
+
+   README.md                        loyiha tavsifi
+   requirements.txt                 asosiy paketlar (pinned, tekshirilgan)
+   requirements-ai.txt              YOLO + torch + insightface (pinned)
+   run.bat / run.sh                 ishga tushirish skriptlari
+   run.py                           server (uvicorn) kirish nuqtasi
+   .env.example                     sozlamalar namunasi
+   docs\yoriqnoma_uz.md             foydalanuvchi qo'llanmasi
+   docs\yolo_training.md            modelni qayta o'qitish
+   docs\YORIQNOMA-face-date.pdf     to'liq qo'llanma (Word/PDF)
+   scripts\test_camera.py           kamera diagnostikasi
+   scripts\enroll_employees.py      xodimlarni papkadan ommaviy ro'yxatga olish
+   scripts\register_employee.py     bitta xodimni ro'yxatga olish
+   scripts\build_manual.py          Word qo'llanmasini qayta yaratish
+   scripts\train_yolo.py            YOLO o'qitish
+   tests\                           pytest to'plami (281 test)
+
+
+===============================================================================
+ Savol bo'lsa: logs\app.log ni biriktiring va xato matnini yuboring.
+===============================================================================
