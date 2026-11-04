@@ -1,0 +1,6 @@
+- Domain configuration is centralized in a frozen `@dataclass` (`Settings`) built from `os.getenv` helpers (`_bool`, `_int`, `_float`, `_str`, `_path`) and cached process-wide via `@lru_cache(maxsize=1)` on `get_settings()`.
+- Route handlers are split per resource into separate files under `app/api/`, each exporting a single `router = APIRouter()` that `main.create_app` includes in a fixed order.
+- Authentication and authorization flow through `deps.require_user` / `require_roles` / `require_admin`, which raise `AuthRequired` or `Forbidden` exceptions handled globally by `main`'s exception handlers to redirect or render `error.html`.
+- CSRF protection is applied uniformly via `ensure_csrf_token` / `verify_csrf` helpers in `deps.py`, with tokens stored in the Starlette session under `SESSION_CSRF_KEY`.
+- Template rendering goes through `deps.render(request, template, context)`, which injects a standard base context (user, csrf_token, notices, settings, timezone, booleans like `is_admin`) rather than passing it per handler.
+- Database access uses the `get_db()` FastAPI dependency for request-scoped sessions and the `session_scope()` context manager for background tasks/scripts, both committing on success and rolling back on exception.

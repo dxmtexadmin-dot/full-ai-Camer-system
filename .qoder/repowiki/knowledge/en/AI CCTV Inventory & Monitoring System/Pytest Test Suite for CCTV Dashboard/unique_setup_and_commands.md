@@ -1,0 +1,1 @@
+Tests require OpenCV (`cv2`) and numpy to be installed because camera tests construct `OpenCVSource` and assert JPEG markers. Run with `pytest tests/`; no separate bootstrap script is needed since `conftest.py` creates the temp directory and seeds the DB automatically.

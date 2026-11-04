@@ -1,0 +1,1 @@
+FastAPI + Starlette sessions + Jinja2 templates; SQLAlchemy ORM with SQLite (WAL + foreign keys) defaulting to PostgreSQL-compatible dialects; python-dotenv for `.env` loading; YOLOv8 + ByteTrack for object tracking, InsightFace for face recognition, OpenCV for frame processing, Google Sheets API for optional audit sync.

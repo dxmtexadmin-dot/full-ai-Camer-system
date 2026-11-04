@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}Xodimlar{% endblock %}
+
+{% block content %}
+{% if not face_status.available %}
+<div class="notice warn">
+  Yuz tanish modeli hozircha yuklanmagan: {{ face_status.reason }}.
+  Xodim qo‘shish ishlaydi, lekin rasm yuklab biometrik shablon yaratib bo‘lmaydi.
+  <code>pip install -r requirements-ai.txt</code> buyrug‘ini bajaring.
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-head">
+    <h2>Xodimlar ro‘yxati</h2>
+    <span class="badge outline">{{ employees | length }}</span>
+    <div class="spacer"></div>
+    <form method="get" action="/employees" class="filters">
+      <div class="field">
+        <input type="search" name="q" value="{{ query }}" placeholder="Ism, familiya yoki kod">
+      </div>
+      <div class="field">
+        <select name="active">
+          <option value="all" {{ 'selected' if active_filter == 'all' else '' }}>Barchasi</option>
+          <option value="active" {{ 'selected' if active_filter == 'active' else '' }}>Faqat faol</option>
+        </select>
+      </div>
+      <button class="btn" type="submit">Qidirish</button>
+    </form>
+  </div>
+
+  {% if employees %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Kod</th>
+          <th>F.I.Sh.</th>
+          <th>Bo‘lim</th>
+          <th class="num">Shablon</th>
+          <th>Holat</th>
+          <th>Ro‘yxatga olingan</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for employee in employees %}
+        <tr>
+          <td class="mono"><a href="/employees/{{ employee.employee_code }}">{{ employee.employee_code }}</a></td>
+          <td>
+            <a href="/employees/{{ employee.employee_code }}">{{ employee.full_name }}</a>
+            {% if employee.employee_number %}<div class="small muted">{{ employee.employee_number }}</div>{% endif %}
+          </td>
+          <td class="small">{{ employee.department or '—' }}</td>
+          <td class="num">
+            {% if employee.reference_count %}
+            <span class="badge ok">{{ employee.reference_count }}</span>
+            {% else %}
+            <span class="badge warn">0</span>
+            {% endif %}
+          </td>
+          <td>
+            <span class="badge {{ 'ok' if employee.is_active else 'muted' }}">{{ 'Faol' if employee.is_active else 'Bloklangan' }}</span>
+          </td>
+          <td class="small muted">{{ employee.registered_at | local_short }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">Xodim topilmadi. Yangi xodimni quyidagi forma orqali qo‘shing.</div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>Yangi xodim</h2></div>
+  <form method="post" action="/api/employees" autocomplete="off">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="field-row">
+      <div class="field">
+        <label for="first_name">Ism *</label>
+        <input id="first_name" name="first_name" type="text" required maxlength="80">
+      </div>
+      <div class="field">
+        <label for="last_name">Familiya *</label>
+        <input id="last_name" name="last_name" type="text" required maxlength="80">
+      </div>
+      <div class="field">
+        <label for="department">Bo‘lim</label>
+        <input id="department" name="department" type="text" maxlength="120">
+      </div>
+      <div class="field">
+        <label for="employee_number">Tabel raqami</label>
+        <input id="employee_number" name="employee_number" type="text" maxlength="64">
+      </div>
+      <div class="field">
+        <label for="employee_code">Xodim kodi</label>
+        <input id="employee_code" name="employee_code" type="text" value="{{ next_code }}" maxlength="32">
+        <div class="help">Bo‘sh qoldirilsa, avtomatik beriladi.</div>
+      </div>
+    </div>
+    <div class="field">
+      <label for="notes">Izoh</label>
+      <textarea id="notes" name="notes" maxlength="1000"></textarea>
+    </div>
+    <div class="btn-row">
+      <button class="btn primary" type="submit">Xodim qo‘shish</button>
+      <span class="help">Qo‘shilgandan so‘ng kamida 2 ta sifatli rasm yuklash kerak.</span>
+    </div>
+  </form>
+</div>
+{% endblock %}

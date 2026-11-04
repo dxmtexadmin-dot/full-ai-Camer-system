@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+{% block title %}Sozlamalar{% endblock %}
+
+{% block content %}
+{% set group_titles = {
+  'detection': 'Aniqlash (YOLO)',
+  'camera': 'Kamera va oqim',
+  'face': 'Yuz tanish',
+  'events': 'Hodisalar va dalillar',
+  'sheets': 'Google Sheets'
+} %}
+
+{% if warnings %}
+<div class="notice warn">
+  <strong>Diqqat:</strong>
+  <ul style="margin:6px 0 0 18px;padding:0">
+    {% for item in warnings %}<li>{{ item }}</li>{% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-head">
+    <h2>Modellar holati</h2>
+    <div class="spacer"></div>
+    <form method="post" action="/api/model/reload" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn small" type="submit">YOLO modelini qayta yuklash</button>
+    </form>
+    <form method="post" action="/api/gallery/reload" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn small" type="submit">Yuz galereyasini yangilash</button>
+    </form>
+  </div>
+  <div class="grid cols-3">
+    <div>
+      <div class="kpi-label">YOLO</div>
+      <div><span class="badge {{ 'ok' if yolo.available else 'bad' }}">{{ 'Tayyor' if yolo.available else 'Mavjud emas' }}</span></div>
+      <div class="help mono">{{ yolo.model_path }}</div>
+      <div class="help">
+        Device: {{ yolo.device }} · imgsz: {{ yolo.image_size }} · conf: {{ yolo.confidence }}
+      </div>
+      <div class="help">
+        Inference: {{ yolo.inference_count }} · {{ (yolo.last_inference_ms | round(1)) if yolo.last_inference_ms else '—' }} ms
+      </div>
+      {% if yolo.using_fallback %}<div class="help">Fallback model ishlatilmoqda.</div>{% endif %}
+      {% if not yolo.available and yolo.reason %}<div class="help">{{ yolo.reason | truncate(200) }}</div>{% endif %}
+    </div>
+    <div>
+      <div class="kpi-label">InsightFace</div>
+      <div><span class="badge {{ 'ok' if face.available else 'warn' }}">{{ 'Tayyor' if face.available else 'Yuklanmagan' }}</span></div>
+      <div class="help">Model: {{ face.model }} · provayder: {{ face.providers | join(', ') }}</div>
+      <div class="help">Chegara: {{ face.threshold }} · marja: {{ face.margin }}</div>
+      <div class="help">Galereya: {{ face.gallery_embeddings }} shablon</div>
+      {% if not face.available and face.reason %}<div class="help">{{ face.reason | truncate(200) }}</div>{% endif %}
+    </div>
+    <div>
+      <div class="kpi-label">Monitoring</div>
+      <div><span class="badge {{ 'ok' if monitor_started else 'bad' }}">{{ 'Ishlayapti' if monitor_started else 'To‘xtagan' }}</span></div>
+      <div class="help">Google Sheets: {{ 'ulangan' if sheets.configured else 'ulanmagan' }} ·
+        <a href="/reports#sheets">hisobot</a> · <a href="/sheets">ulash</a></div>
+      <div class="help">Oxirgi sinxronizatsiya: {{ sheets.last_run_at or '—' }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>Konfiguratsiya</h2>
+    <div class="spacer"></div>
+    <span class="help">Fayl: <code>{{ env_path }}</code></span>
+  </div>
+  <form method="post" action="/api/settings" autocomplete="off">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    {% for group, fields in fields_by_group.items() %}
+    <h3 style="margin-top:14px">{{ group_titles.get(group, group) }}</h3>
+    {% if group == 'sheets' %}
+    <div class="help" style="margin-bottom:6px">
+      Kalit yuklash, jadvalni bo‘lishish va ulanishni sinash uchun
+      <a href="/sheets">Google Sheets ustaxonasi</a> (3 qadam) ishlatiladi.
+    </div>
+    {% endif %}
+    <div class="field-row">
+      {% for field in fields %}
+      {% if field.kind == 'bool' %}
+      <div class="field">
+        <label class="checkbox">
+          <input type="checkbox" name="{{ field.key }}" {{ 'checked' if values[field.key] == 'true' else '' }}>
+          {{ field.label_uz }}
+        </label>
+        {% if field.help_uz %}<div class="help">{{ field.help_uz }}</div>{% endif %}
+      </div>
+      {% else %}
+      <div class="field">
+        <label for="{{ field.key }}">{{ field.label_uz }}</label>
+        {% if field.kind == 'int' %}
+        <input id="{{ field.key }}" name="{{ field.key }}" type="number" step="1"
+               value="{{ values[field.key] }}"
+               {% if field.minimum is not none %}min="{{ field.minimum }}"{% endif %}
+               {% if field.maximum is not none %}max="{{ field.maximum }}"{% endif %}>
+        {% elif field.kind == 'float' %}
+        <input id="{{ field.key }}" name="{{ field.key }}" type="number" step="0.01"
+               value="{{ values[field.key] }}"
+               {% if field.minimum is not none %}min="{{ field.minimum }}"{% endif %}
+               {% if field.maximum is not none %}max="{{ field.maximum }}"{% endif %}>
+        {% else %}
+        <input id="{{ field.key }}" name="{{ field.key }}" type="text" value="{{ values[field.key] }}">
+        {% endif %}
+        {% if field.help_uz %}<div class="help">{{ field.help_uz }}</div>{% endif %}
+      </div>
+      {% endif %}
+      {% endfor %}
+    </div>
+    {% endfor %}
+    <div class="btn-row" style="margin-top:12px">
+      <button class="btn primary" type="submit">Saqlash va qo‘llash</button>
+      <span class="help">
+        O‘zgarishlar <code>.env</code> fayliga yoziladi va kamera oqimlari qayta ishga tushiriladi.
+        Maxfiy qiymatlar (kalit, baza manzili, bootstrap paroli) bu yerdan tahrirlanmaydi.
+      </span>
+    </div>
+  </form>
+</div>
+
+<div class="card" id="foydalanuvchilar">
+  <div class="card-head">
+    <h2>Foydalanuvchilar</h2>
+    <span class="badge outline">{{ users | length }}</span>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Login</th>
+          <th>F.I.Sh.</th>
+          <th>Rol</th>
+          <th>Holat</th>
+          <th>Oxirgi kirish</th>
+          <th>Amallar</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in users %}
+        <tr>
+          <td class="mono">{{ item.username }}</td>
+          <td class="small">{{ item.full_name or '—' }}</td>
+          <td><span class="badge {{ 'info' if item.role == 'admin' else 'outline' }}">{{ item.role_enum.label_uz }}</span></td>
+          <td><span class="badge {{ 'ok' if item.is_active else 'muted' }}">{{ 'Faol' if item.is_active else 'Bloklangan' }}</span></td>
+          <td class="small muted">{{ item.last_login_at | local_short }}</td>
+          <td style="min-width:260px">
+            <details class="details">
+              <summary>Boshqarish</summary>
+              <form method="post" action="/api/users/{{ item.id }}/password" autocomplete="off">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="field">
+                  <label>Yangi parol (kamida 8 belgi)</label>
+                  <input type="password" name="password" minlength="8" required>
+                </div>
+                <button class="btn small primary" type="submit">Parolni yangilash</button>
+              </form>
+              {% if item.id != user.id %}
+              <form method="post" action="/api/users/{{ item.id }}/toggle" style="margin-top:8px"
+                    data-confirm="{{ 'Foydalanuvchini bloklaysizmi?' if item.is_active else 'Foydalanuvchini faollashtirasizmi?' }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button class="btn small {{ 'danger' if item.is_active else '' }}" type="submit">
+                  {{ 'Bloklash' if item.is_active else 'Faollashtirish' }}
+                </button>
+              </form>
+              {% endif %}
+            </details>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <hr class="sep">
+  <h3>Yangi foydalanuvchi</h3>
+  <form method="post" action="/api/users" autocomplete="off">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="field-row">
+      <div class="field">
+        <label for="new_username">Login *</label>
+        <input id="new_username" name="username" type="text" required minlength="3" maxlength="64">
+      </div>
+      <div class="field">
+        <label for="new_full_name">F.I.Sh.</label>
+        <input id="new_full_name" name="full_name" type="text" maxlength="160">
+      </div>
+      <div class="field">
+        <label for="new_password">Parol *</label>
+        <input id="new_password" name="password" type="password" required minlength="8">
+      </div>
+      <div class="field">
+        <label for="new_role">Rol *</label>
+        <select id="new_role" name="role">
+          {% for item in Role %}<option value="{{ item.value }}">{{ item.label_uz }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+    <button class="btn primary" type="submit">Foydalanuvchi qo‘shish</button>
+  </form>
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>Audit jurnali (oxirgi 40)</h2></div>
+  {% if audit %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Vaqt</th>
+          <th>Foydalanuvchi</th>
+          <th>Amal</th>
+          <th>Obyekt</th>
+          <th>Sabab</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in audit %}
+        <tr>
+          <td class="small nowrap">{{ row.occurred_at | local_dt }}</td>
+          <td class="small mono">{{ row.username }}</td>
+          <td class="small">{{ row.action }}</td>
+          <td class="small mono">{{ row.entity }}{% if row.entity_id %}:{{ row.entity_id }}{% endif %}</td>
+          <td class="small muted">{{ row.reason or '' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">Audit yozuvlari yo‘q.</div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>Tizim ma’lumotlari</h2></div>
+  <div class="stat-line"><span>Muhit</span><span>{{ settings.env }}</span></div>
+  <div class="stat-line"><span>Vaqt mintaqasi</span><span>{{ settings.timezone }} ({{ workplace_tz }})</span></div>
+  <div class="stat-line"><span>Baza</span><span class="mono small">{{ settings.database_url }}</span></div>
+  <div class="stat-line"><span>Ma’lumot papkasi</span><span class="mono small">{{ settings.data_dir }}</span></div>
+  <div class="stat-line"><span>Dalil rasmlari</span><span class="mono small">{{ settings.evidence_dir }}</span></div>
+  <div class="stat-line"><span>Dalil saqlash muddati</span><span>{{ settings.evidence_retention_days }} kun</span></div>
+  <div class="stat-line"><span>Log papkasi</span><span class="mono small">{{ settings.log_dir }}</span></div>
+</div>
+{% endblock %}

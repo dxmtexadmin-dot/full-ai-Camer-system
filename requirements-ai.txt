@@ -1,0 +1,24 @@
+# Optional AI inference dependencies.
+# These are NOT required to run the application shell (dashboard, inventory, review).
+# They are required for real camera inference (YOLO detection + InsightFace recognition).
+#
+#   .venv\Scripts\python.exe -m pip install -r requirements-ai.txt
+#
+# Notes (Windows):
+#  * ultralytics pulls in torch. CPU wheels are ~250 MB.
+#  * insightface 0.7.x is source-only on PyPI and needs a C++ build toolchain
+#    (Visual Studio Build Tools + Cython). insightface 2.1 ships a pure-Python
+#    wheel with the same FaceAnalysis API, so no compiler is required.
+#    If it is missing or fails to load, the application still starts and reports
+#    face recognition as "unavailable" instead of pretending it works.
+#  * lapx provides the 'lap' module that ultralytics needs for ByteTrack. Without
+#    it ultralytics tries to pip-install it at runtime on every frame - which
+#    installs into whatever pip is on PATH, not into this virtualenv.
+#  * onnxruntime is the CPU runtime used by InsightFace. Install onnxruntime-gpu instead
+#    for CUDA acceleration.
+
+ultralytics==8.4.199
+lapx>=0.5.2
+insightface==2.1
+onnxruntime==1.20.1
+onnx==1.17.0

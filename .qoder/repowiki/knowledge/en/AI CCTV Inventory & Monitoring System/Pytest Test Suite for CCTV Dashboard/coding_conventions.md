@@ -1,0 +1,6 @@
+- Each test file begins with a docstring summarising the scenario(s) it covers (e.g. de-duplication, CSV export, missing source handling).
+- Database state is built through the shared `session` fixture rather than direct engine access, and assertions on persisted data go through SQLAlchemy queries after `session.commit()`.
+- HTTP tests log in via the helper `login(client)` which extracts a CSRF token from `/login` and posts it back, asserting a 303 redirect to the dashboard.
+- Admin-only endpoints are exercised by creating operator/viewer users through the `other_user_factory` fixture and logging in as them to assert 403 responses.
+- Camera-related tests use `SimulationSource` (or a fake file path under `tmp_path`) instead of real cameras, and rely on a local `wait_for` polling helper for asynchronous status transitions.
+- Environment-sensitive behavior is toggled by setting `os.environ` variables in `conftest.py` (e.g. `GOOGLE_SHEETS_ENABLED=false`, `SIMULATION_MODE=false`) before importing the app.

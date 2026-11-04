@@ -1,0 +1,347 @@
+{% extends "base.html" %}
+{% block title %}Hisobotlar{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-head">
+    <h2>Hisobot filtrlari</h2>
+    <div class="spacer"></div>
+    <a class="btn small" href="/reports/export.csv?{{ request.url.query }}">CSV yuklab olish</a>
+  </div>
+  <form method="get" action="/reports" class="filters">
+    <div class="field">
+      <label>Boshlanish</label>
+      <input type="date" name="start" value="{{ filters.get('start', '') }}">
+    </div>
+    <div class="field">
+      <label>Tugash</label>
+      <input type="date" name="end" value="{{ filters.get('end', '') }}">
+    </div>
+    <div class="field">
+      <label>Kamera</label>
+      <select name="camera">
+        <option value="">Barchasi</option>
+        {% for code in cameras %}
+        <option value="{{ code }}" {{ 'selected' if filters.get('camera') == code else '' }}>{{ code }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label>Hodisa turi</label>
+      <select name="type">
+        <option value="">Barchasi</option>
+        {% for item in event_types %}
+        <option value="{{ item.value }}" {{ 'selected' if filters.get('type') == item.value else '' }}>{{ item.label_uz }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label>Toifa</label>
+      <select name="category">
+        <option value="">Barchasi</option>
+        {% for item in categories %}
+        <option value="{{ item.code }}" {{ 'selected' if filters.get('category') == item.code else '' }}>{{ item.label_uz }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label>Holat</label>
+      <select name="status">
+        <option value="">Barchasi</option>
+        {% for item in statuses %}
+        <option value="{{ item.value }}" {{ 'selected' if filters.get('status') == item.value else '' }}>{{ item.label_uz }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label>Xodim</label>
+      <select name="employee_id">
+        <option value="">Barchasi</option>
+        {% for item in employees %}
+        <option value="{{ item.id }}" {{ 'selected' if filters.get('employee_id') == item.id | string else '' }}>
+          {{ item.employee_code }} — {{ item.full_name }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="btn primary" type="submit">Hisoblash</button>
+    <a class="btn ghost" href="/reports">Tozalash</a>
+  </form>
+  <div class="help" style="margin-top:8px">
+    Filtrlangan hodisalar: <strong>{{ event_total }}</strong>.
+    Hisobotda ko‘pi bilan 20 000 yozuv CSV faylga chiqariladi.
+  </div>
+</div>
+
+<div class="grid cols-2">
+  <div class="card">
+    <div class="card-head"><h2>Hodisa turlari</h2></div>
+    {% if by_type %}
+      {% set max_type = by_type | map(attribute='count') | max %}
+      {% for item in by_type %}
+      <div style="margin-bottom:9px">
+        <div class="stat-line" style="border:none;padding:0">
+          <span class="small">{{ item.label }}</span>
+          <span class="mono small">{{ item.count }}</span>
+        </div>
+        <div class="bar"><span {{ bar_style(item.count / max_type * 100) }}></span></div>
+      </div>
+      {% endfor %}
+    {% else %}
+    <div class="empty">Ma’lumot yo‘q.</div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>Tasdiqlash holati</h2></div>
+    {% if by_status %}
+      {% set max_status = by_status | map(attribute='count') | max %}
+      {% for item in by_status %}
+      <div style="margin-bottom:9px">
+        <div class="stat-line" style="border:none;padding:0">
+          <span class="small">{{ item.label }}</span>
+          <span class="mono small">{{ item.count }}</span>
+        </div>
+        <div class="bar {{ 'warn' if item.code == 'PENDING' else ('bad' if item.code == 'REJECTED' else '') }}">
+          <span {{ bar_style(item.count / max_status * 100) }}></span>
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+    <div class="empty">Ma’lumot yo‘q.</div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>Jihoz toifalari bo‘yicha</h2></div>
+    {% if by_category %}
+      {% set max_cat = by_category | map(attribute='count') | max %}
+      {% for item in by_category %}
+      <div style="margin-bottom:9px">
+        <div class="stat-line" style="border:none;padding:0">
+          <span class="small">{{ item.label }}</span>
+          <span class="mono small">{{ item.count }}</span>
+        </div>
+        <div class="bar"><span {{ bar_style(item.count / max_cat * 100) }}></span></div>
+      </div>
+      {% endfor %}
+    {% else %}
+    <div class="empty">Ma’lumot yo‘q.</div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>Eng faol xodimlar</h2></div>
+    {% if by_employee %}
+    <ul class="list">
+      {% for item in by_employee %}
+      <li>
+        <span class="small">{{ item.name }}</span>
+        <span class="when mono">{{ item.count }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty">Ma’lumot yo‘q.</div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>Inventar holati</h2>
+    <div class="spacer"></div>
+    <a class="btn small" href="/inventory">Jurnal</a>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Toifa</th>
+          <th class="num">Boshlang‘ich</th>
+          <th class="num">Kutilgan</th>
+          <th class="num">Kutilayotgan kirim</th>
+          <th class="num">Kutilayotgan chiqim</th>
+          <th class="num">Asset</th>
+          <th class="num">Farq</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in balances %}
+        <tr>
+          <td class="small">{{ item.label_uz }}</td>
+          <td class="num">{{ item.initial }}</td>
+          <td class="num"><strong>{{ item.expected }}</strong></td>
+          <td class="num">{{ item.pending_in }}</td>
+          <td class="num">{{ item.pending_out }}</td>
+          <td class="num">{{ item.registered_assets }}</td>
+          <td class="num">
+            {% if item.discrepancy %}
+            <span class="badge {{ 'bad' if item.discrepancy > 0 else 'warn' }}">{{ item.discrepancy }}</span>
+            {% else %}<span class="muted">—</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card" id="sheets">
+  <div class="card-head">
+    <h2>Google Sheets</h2>
+    <span class="badge {{ 'ok' if sheets.configured else 'muted' }}">
+      {{ 'Ulangan' if sheets.configured else ('O‘chirilgan' if not sheets.enabled else 'Sozlanmagan') }}
+    </span>
+    <div class="spacer"></div>
+    {% if is_admin %}
+    <a class="btn small ghost" href="/sheets">Ulash / sozlash</a>
+    {% endif %}
+    {% if is_operator %}
+    <form method="post" action="/api/sheets/sync">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn small primary" type="submit" {{ 'disabled' if not sheets.configured else '' }}>
+        Hozir sinxronlash
+      </button>
+    </form>
+    {% endif %}
+  </div>
+  <div class="grid cols-3">
+    <div>
+      <div class="kpi-label">Sinkronizatsiya kutayotgan hodisa</div>
+      <div class="kpi-value {{ 'warn' if unsynced else 'ok' }}">{{ unsynced }}</div>
+    </div>
+    <div>
+      <div class="kpi-label">Interval</div>
+      <div>{{ sheets.interval_seconds }} s</div>
+    </div>
+    <div>
+      <div class="kpi-label">Oxirgi natija</div>
+      <div class="small">{{ sheets.last_result or '—' }}</div>
+    </div>
+  </div>
+  {% if sheets.spreadsheet_id %}
+  <div class="help" style="margin-top:6px">Spreadsheet ID: <code>{{ sheets.spreadsheet_id }}</code></div>
+  {% endif %}
+  {% if sync_logs %}
+  <hr class="sep">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Vaqt</th>
+          <th>Holat</th>
+          <th class="num">Yuborildi</th>
+          <th class="num">Xato</th>
+          <th>Manba</th>
+          <th>Xabar</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in sync_logs %}
+        <tr>
+          <td class="small nowrap">{{ log.started_at | local_dt }}</td>
+          <td>
+            <span class="badge {{ 'ok' if log.status == 'SYNCED' else ('bad' if log.status == 'FAILED' else 'muted') }}">{{ log.status }}</span>
+          </td>
+          <td class="num mono">{{ log.pushed }}</td>
+          <td class="num mono">{{ log.failed }}</td>
+          <td class="small">{{ log.triggered_by }}</td>
+          <td class="small muted">{{ (log.message or '') | truncate(90) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+  <div class="help" style="margin-top:8px">
+    Google Sheets — faqat hisobot oynasi. Asosiy ma’lumot lokal bazada saqlanadi,
+    sinxronizatsiya vaqtincha ishlamasa ham tizim ishlashda davom etadi.
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>Hodisalar (birinchi 200)</h2>
+    <div class="spacer"></div>
+    <a class="btn small" href="/movements?{{ request.url.query }}">To‘liq ro‘yxat</a>
+  </div>
+  {% if events %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Vaqt</th>
+          <th>Hodisa</th>
+          <th>Kamera</th>
+          <th>Xodim</th>
+          <th>Jihoz</th>
+          <th>Yo‘nalish</th>
+          <th class="num">Aniqlik</th>
+          <th>Holat</th>
+          <th>Dalil</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for event in events %}
+        <tr>
+          <td class="small nowrap">
+            {{ event.occurred_at | local_dt }}
+            <div class="mono muted">{{ event.public_id }}</div>
+          </td>
+          <td>
+            <span class="badge {{ 'warn' if 'UNKNOWN' in event.event_type else ('info' if 'EQUIPMENT' in event.event_type else ('bad' if 'CAMERA' in event.event_type else 'muted')) }}">
+              {{ event.type_label_uz }}
+            </span>
+          </td>
+          <td class="small mono">{{ event.camera_code or '—' }}</td>
+          <td class="small">
+            {{ event.employee_label }}
+            {% if event.employee %}<div class="mono muted">{{ event.employee.employee_code }}</div>{% endif %}
+          </td>
+          <td class="small">
+            {% if event.equipment_category %}{{ event.equipment_category }}{% else %}—{% endif %}
+            {% if event.asset %}<div class="mono muted">{{ event.asset.asset_code }}</div>{% endif %}
+            {% if event.extra and event.extra.get('held_seconds') %}
+            <div class="mono muted">qo‘lda {{ event.extra.get('held_seconds') | round(0) | int }} s</div>
+            {% endif %}
+          </td>
+          <td class="small">
+            {% if event.direction != 'NONE' %}
+            <span class="badge {{ 'ok' if event.direction == 'IN' else 'warn' }}">{{ event.direction_label_uz }}</span>
+            {% else %}—{% endif %}
+          </td>
+          <td class="num mono small">
+            {% if event.association_confidence is not none %}
+            {{ event.association_confidence | score }}
+            {% elif event.face_match_score is not none %}
+            {{ event.face_match_score | score }}
+            {% elif event.detection_confidence is not none %}
+            {{ event.detection_confidence | score }}
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            {% set st = event.verification_status %}
+            <span class="badge {{ 'ok' if st == 'CONFIRMED' else ('warn' if st == 'PENDING' else ('bad' if st == 'REJECTED' else 'info')) }}">
+              {{ event.status_label_uz }}
+            </span>
+          </td>
+          <td class="small">
+            {% if event.evidence_path %}
+            <a href="/api/events/{{ event.public_id }}/evidence" target="_blank" rel="noopener">Ochish</a>
+            {% else %}<span class="muted">—</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="help" style="margin-top:8px">
+    Faqat shaxs va jihoz hodisalari ko‘rsatilgan. Kamera uzilish/tiklanish yozuvlari
+    <a href="/movements?type=CAMERA_DISCONNECTED">to‘liq ro‘yxatda</a>.
+  </div>
+  {% else %}
+  <div class="empty">Tanlangan shartlar bo‘yicha hodisa yo‘q.</div>
+  {% endif %}
+</div>
+{% endblock %}

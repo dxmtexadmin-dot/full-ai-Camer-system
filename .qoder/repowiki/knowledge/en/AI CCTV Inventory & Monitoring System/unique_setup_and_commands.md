@@ -1,0 +1,1 @@
+`python run.py [--host] [--port] [--reload] [--log-level]` starts the server (host/port/log_level sourced from `.env`); `run.bat` and `run.sh` are thin wrappers around this entry point; `pytest` runs the suite under `tests/` per `pytest.ini`.

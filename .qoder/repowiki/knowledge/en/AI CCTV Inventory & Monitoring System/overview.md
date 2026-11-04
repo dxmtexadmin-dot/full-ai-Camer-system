@@ -1,0 +1,1 @@
+Top-level entry point and configuration for a FastAPI-based CCTV monitoring system that tracks people and equipment across camera feeds, with CLI scripts and a pytest suite.

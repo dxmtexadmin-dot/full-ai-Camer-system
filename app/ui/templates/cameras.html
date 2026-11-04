@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+{% block title %}Kameralar{% endblock %}
+
+{% block content %}
+{% set source_labels = {'rtsp': 'RTSP / HTTP oqim', 'usb': 'USB kamera', 'file': 'Video fayl', 'simulation': 'Simulyatsiya'} %}
+
+<div class="card">
+  <div class="card-head">
+    <h2>Kameralar</h2>
+    <span class="badge outline">{{ rows | length }}</span>
+    <div class="spacer"></div>
+    <a class="btn small" href="/live">Jonli ko‘rinish</a>
+  </div>
+
+  {% if rows %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Kod</th>
+          <th>Nomi / joylashuv</th>
+          <th>Manba</th>
+          <th>Chiziq</th>
+          <th>Holat</th>
+          <th class="num">Kadr</th>
+          <th>Amallar</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td class="mono">{{ row.camera.code }}</td>
+          <td>
+            {{ row.camera.name }}
+            <div class="small muted">{{ row.camera.location or '—' }}</div>
+          </td>
+          <td class="small">
+            {{ source_labels.get(row.camera.source_type, row.camera.source_type) }}
+            <div class="mono muted">{{ row.camera.masked_source or '—' }}</div>
+          </td>
+          <td class="small">
+            {% if row.camera.has_line %}
+            <span class="badge info mono">({{ row.camera.line_x1 }},{{ row.camera.line_y1 }})→({{ row.camera.line_x2 }},{{ row.camera.line_y2 }})</span>
+            {% else %}<span class="muted">belgilanmagan</span>{% endif %}
+          </td>
+          <td>
+            {% set st = row.status.value %}
+            <span class="badge {{ 'ok' if st == 'ONLINE' else ('bad' if st in ['OFFLINE', 'ERROR'] else ('info' if st == 'CONNECTING' else 'muted')) }}">
+              {{ row.status.label_uz }}
+            </span>
+            {% if row.message %}<div class="small muted">{{ row.message | truncate(60) }}</div>{% endif %}
+            {% if not row.camera.is_enabled %}<div class="small muted">O‘chirilgan</div>{% endif %}
+          </td>
+          <td class="num mono">{{ row.frames }}</td>
+          <td style="min-width:260px">
+            <div class="btn-row">
+              <a class="btn small" href="/live?camera={{ row.camera.code }}">Ko‘rish</a>
+              <form method="post" action="/api/cameras/{{ row.camera.id }}/toggle" class="inline-form"
+                    data-confirm="{{ 'Kamerani o‘chirasizmi?' if row.camera.is_enabled else 'Kamerani yoqasizmi?' }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button class="btn small" type="submit">{{ 'O‘chirish' if row.camera.is_enabled else 'Yoqish' }}</button>
+              </form>
+              <form method="post" action="/api/cameras/{{ row.camera.id }}/delete" class="inline-form"
+                    data-confirm="Kamera butunlay o‘chiriladi. Davom etasizmi?">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button class="btn small danger" type="submit">✕</button>
+              </form>
+            </div>
+
+            <details class="details">
+              <summary>Sozlash</summary>
+              <form method="post" action="/api/cameras/{{ row.camera.id }}/update">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="field">
+                  <label>Nomi</label>
+                  <input type="text" name="name" value="{{ row.camera.name }}" required maxlength="120">
+                </div>
+                <div class="field">
+                  <label>Joylashuv</label>
+                  <input type="text" name="location" value="{{ row.camera.location }}" maxlength="120">
+                </div>
+                <div class="field">
+                  <label>Manba turi</label>
+                  <select name="source_type">
+                    {% for value, label in source_labels.items() %}
+                    <option value="{{ value }}" {{ 'selected' if row.camera.source_type == value else '' }}>{{ label }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="field">
+                  <label>Manba</label>
+                  <input type="text" name="source" value="{{ row.camera.source }}" placeholder="rtsp://…">
+                </div>
+                <div class="field-row">
+                  <div class="field">
+                    <label>Chiziq X1</label>
+                    <input type="number" name="line_x1" value="{{ row.camera.line_x1 if row.camera.line_x1 is not none else '' }}">
+                  </div>
+                  <div class="field">
+                    <label>Y1</label>
+                    <input type="number" name="line_y1" value="{{ row.camera.line_y1 if row.camera.line_y1 is not none else '' }}">
+                  </div>
+                  <div class="field">
+                    <label>X2</label>
+                    <input type="number" name="line_x2" value="{{ row.camera.line_x2 if row.camera.line_x2 is not none else '' }}">
+                  </div>
+                  <div class="field">
+                    <label>Y2</label>
+                    <input type="number" name="line_y2" value="{{ row.camera.line_y2 if row.camera.line_y2 is not none else '' }}">
+                  </div>
+                </div>
+                <div class="field">
+                  <label>Ishonch chegarasi (0–1)</label>
+                  <input type="number" name="confidence" step="0.01" min="0.05" max="0.99"
+                         value="{{ row.camera.confidence_override if row.camera.confidence_override is not none else '' }}"
+                         placeholder="global qiymat">
+                </div>
+                <label class="checkbox" style="margin-bottom:6px">
+                  <input type="checkbox" name="flip_line" {{ 'checked' if row.camera.settings and row.camera.settings.get('flip_line') else '' }}>
+                  Chiziq yo‘nalishini teskari qilish (IN ↔ OUT)
+                </label>
+                <label class="checkbox" style="margin-bottom:10px">
+                  <input type="checkbox" name="is_enabled" {{ 'checked' if row.camera.is_enabled else '' }}>
+                  Yoqilgan
+                </label>
+                <button class="btn primary small" type="submit">Saqlash va qayta ishga tushirish</button>
+              </form>
+            </details>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">Kamera qo‘shilmagan. Quyidagi forma orqali qo‘shing.</div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>Yangi kamera</h2></div>
+  <form method="post" action="/api/cameras" autocomplete="off">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="field-row">
+      <div class="field">
+        <label for="code">Kod *</label>
+        <input id="code" name="code" type="text" required maxlength="32" placeholder="CAM-01">
+        <div class="help">Faqat harf, raqam, «-» va «_».</div>
+      </div>
+      <div class="field">
+        <label for="name">Nomi *</label>
+        <input id="name" name="name" type="text" required maxlength="120" placeholder="Kirish eshigi">
+      </div>
+      <div class="field">
+        <label for="location">Joylashuv</label>
+        <input id="location" name="location" type="text" maxlength="120">
+      </div>
+    </div>
+
+    <div class="field-row">
+      <div class="field">
+        <label for="source_type">Manba turi</label>
+        <select id="source_type" name="source_type" data-source-type>
+          <option value="rtsp">RTSP / HTTP oqim</option>
+          <option value="usb">USB kamera</option>
+          <option value="file">Video fayl</option>
+          <option value="simulation">Simulyatsiya (kamera yo‘q)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="source">Manba</label>
+        <input id="source" name="source" type="text" data-source-input
+               placeholder="rtsp://user:***@192.168.1.64:554/Streaming/Channels/101">
+        <div class="help">Parolni kodga yozmang; manba faqat bazada saqlanadi va ko‘rsatishda yashiriladi.</div>
+      </div>
+    </div>
+
+    <div class="field-row">
+      <div class="field">
+        <label for="line_x1">Chiziq X1</label>
+        <input id="line_x1" name="line_x1" type="number" placeholder="0">
+      </div>
+      <div class="field">
+        <label for="line_y1">Chiziq Y1</label>
+        <input id="line_y1" name="line_y1" type="number" placeholder="360">
+      </div>
+      <div class="field">
+        <label for="line_x2">Chiziq X2</label>
+        <input id="line_x2" name="line_x2" type="number" placeholder="1280">
+      </div>
+      <div class="field">
+        <label for="line_y2">Chiziq Y2</label>
+        <input id="line_y2" name="line_y2" type="number" placeholder="360">
+      </div>
+    </div>
+    <div class="help" style="margin-bottom:10px">
+      Virtual chiziq kadr piksellarida belgilanadi. Barcha 4 qiymat kiritilishi kerak;
+      chiziq bo‘lmasa, faqat shaxs aniqlandi/jihoz aniqlandi hodisalari yoziladi.
+    </div>
+
+    <div class="field-row">
+      <div class="field">
+        <label for="confidence">Ishonch chegarasi</label>
+        <input id="confidence" name="confidence" type="number" step="0.01" min="0.05" max="0.99" placeholder="global">
+      </div>
+      <div class="field">
+        <label class="checkbox" style="margin-top:24px">
+          <input type="checkbox" name="flip_line">
+          Yo‘nalishni teskari qilish
+        </label>
+      </div>
+      <div class="field">
+        <label class="checkbox" style="margin-top:24px">
+          <input type="checkbox" name="is_enabled" checked>
+          Darhol ishga tushirish
+        </label>
+      </div>
+    </div>
+
+    <button class="btn primary" type="submit">Kamera qo‘shish</button>
+  </form>
+</div>
+{% endblock %}

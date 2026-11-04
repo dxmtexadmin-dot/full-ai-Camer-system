@@ -1,0 +1,1 @@
+Python CLIs built on argparse, SQLAlchemy sessions via `app.database.session_scope`, Ultralytics YOLO (`ultralytics.YOLO`) for training, OpenCV (`cv2`) for frame capture/writing, and Google Sheets API via `app.services.google_sheets_service`.

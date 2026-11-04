@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+{% block title %}{{ employee.full_name }}{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-head">
+    <h2>{{ employee.full_name }}</h2>
+    <span class="badge outline mono">{{ employee.employee_code }}</span>
+    <span class="badge {{ 'ok' if employee.is_active else 'muted' }}">{{ 'Faol' if employee.is_active else 'Bloklangan' }}</span>
+    <div class="spacer"></div>
+    <a class="btn small" href="/employees">← Ro‘yxatga qaytish</a>
+  </div>
+  <div class="grid cols-4">
+    <div>
+      <div class="kpi-label">Bo‘lim</div>
+      <div>{{ employee.department or '—' }}</div>
+    </div>
+    <div>
+      <div class="kpi-label">Tabel raqami</div>
+      <div>{{ employee.employee_number or '—' }}</div>
+    </div>
+    <div>
+      <div class="kpi-label">Ro‘yxatga olingan</div>
+      <div class="small">{{ employee.registered_at | local_dt }}</div>
+    </div>
+    <div>
+      <div class="kpi-label">Biometrik shablon</div>
+      <div>
+        <span class="badge {{ 'ok' if employee.reference_count else 'warn' }}">{{ employee.reference_count }} ta</span>
+      </div>
+    </div>
+  </div>
+  {% if employee.notes %}
+  <div class="help" style="margin-top:12px">Izoh: {{ employee.notes }}</div>
+  {% endif %}
+</div>
+
+<div class="split">
+  <div style="flex:1 1 420px;min-width:300px">
+    <div class="card">
+      <div class="card-head"><h2>Ma’lumotlarni tahrirlash</h2></div>
+      <form method="post" action="/api/employees/{{ employee.id }}/update">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="field-row">
+          <div class="field">
+            <label for="first_name">Ism</label>
+            <input id="first_name" name="first_name" type="text" value="{{ employee.first_name }}" required maxlength="80">
+          </div>
+          <div class="field">
+            <label for="last_name">Familiya</label>
+            <input id="last_name" name="last_name" type="text" value="{{ employee.last_name }}" required maxlength="80">
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="department">Bo‘lim</label>
+            <input id="department" name="department" type="text" value="{{ employee.department }}" maxlength="120">
+          </div>
+          <div class="field">
+            <label for="employee_number">Tabel raqami</label>
+            <input id="employee_number" name="employee_number" type="text" value="{{ employee.employee_number or '' }}" maxlength="64">
+          </div>
+        </div>
+        <div class="field">
+          <label for="notes">Izoh</label>
+          <textarea id="notes" name="notes" maxlength="1000">{{ employee.notes or '' }}</textarea>
+        </div>
+        <button class="btn primary" type="submit">Saqlash</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Holatni o‘zgartirish</h2></div>
+      <p class="help">
+        Bloklangan xodim tanilmaydi (kadrda «Noma’lum shaxs» sifatida ko‘rinadi),
+        ammo tarixiy hodisalar saqlanadi.
+      </p>
+      <form method="post" action="/api/employees/{{ employee.id }}/toggle"
+            data-confirm="{{ 'Xodimni bloklaysizmi?' if employee.is_active else 'Xodimni faollashtirasizmi?' }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="btn {{ 'danger' if employee.is_active else 'primary' }}" type="submit">
+          {{ 'Bloklash' if employee.is_active else 'Faollashtirish' }}
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div style="flex:1 1 460px;min-width:300px">
+    <div class="card">
+      <div class="card-head">
+        <h2>Yuz shablonlari</h2>
+        <div class="spacer"></div>
+        <span class="badge outline">{{ employee.reference_count }} ta rasm</span>
+      </div>
+
+      {% if not face_status.available %}
+      <div class="notice warn">Yuz modeli yuklanmagan: {{ face_status.reason }}</div>
+      {% endif %}
+
+      {% if employee.embeddings %}
+      <div class="photo-grid">
+        {% for photo in employee.embeddings %}
+        <div class="photo-tile">
+          <img src="/api/employees/{{ employee.employee_code }}/photos/{{ photo.source_image.split('/')[-1] }}"
+               alt="Shablon {{ loop.index }}" loading="lazy">
+          <div class="meta">
+            <span>{{ photo.created_at | local_short }}</span>
+            <form method="post" class="inline-form"
+                  action="/api/employees/{{ employee.id }}/photos/{{ photo.id }}/delete"
+                  data-confirm="Bu rasm va shablon o‘chiriladi. Davom etasizmi?">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button class="btn small ghost" type="submit" title="O‘chirish">✕</button>
+            </form>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty">Hali rasm yuklanmagan. Kamida 2 ta turli burchakdagi rasm yuklang.</div>
+      {% endif %}
+
+      <hr class="sep">
+      <form method="post" action="/api/employees/{{ employee.id }}/photos" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="field">
+          <label for="photos">Yangi rasmlar (2–5 ta)</label>
+          <input id="photos" name="photos" type="file" accept="image/jpeg,image/png,image/webp" multiple>
+          <div class="help">
+            Talablar: yuz aniq ko‘rinishi, yorug‘lik yetarli, boshqa shaxs bo‘lmasligi.
+            Har bir rasm uchun alohida embedding yaratiladi. Bitta xodim uchun
+            jami 15 tagacha rasm saqlanadi, bir xil rasm ikkinchi marta qabul qilinmaydi.
+          </div>
+        </div>
+        <button class="btn primary" type="submit" {{ 'disabled' if not face_status.available else '' }}>
+          Yuklash va shablon yaratish
+        </button>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>Kameradan rasm olish</h2>
+        <div class="spacer"></div>
+        <span class="help">Tanish aniqligini oshiradi</span>
+      </div>
+      <p class="help">
+        Xodim kameraga qarab 1–2 soniya tursin va «Kameradan rasm olish» tugmasini bosing.
+        O‘sha kameraning o‘zidan olingan rasm burchak va yorug‘likni takrorlaydi, shuning
+        uchun skanerlangan suratdan ko‘ra yaxshiroq ishlaydi. Har bosishda bitta yangi shablon qo‘shiladi.
+      </p>
+      {% if cameras %}
+      <div class="split">
+        {% for item in cameras %}
+        <div style="flex:1 1 220px;min-width:200px">
+          <img data-snapshot="/api/cameras/{{ item.code }}/snapshot" alt="{{ item.code }} kadri"
+               style="width:100%;border-radius:10px;border:1px solid var(--border)">
+          <form method="post" action="/api/employees/{{ employee.id }}/photos/capture" style="margin-top:8px">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="camera" value="{{ item.code }}">
+            <button class="btn primary small" type="submit" {{ 'disabled' if not face_status.available else '' }}>
+              Kameradan rasm olish ({{ item.code }})
+            </button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="notice warn">
+        Faol kamera yo‘q. Avval <a href="/cameras">Kameralar</a> bo‘limida kamera qo‘shing.
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Xodimni o‘chirish</h2></div>
+      <p class="help">
+        Bu amal xodim yozuvi, rasmlari va barcha biometrik shablonlarini butunlay o‘chiradi.
+        Tasdiqlash uchun xodim kodini (<code>{{ employee.employee_code }}</code>) kiriting.
+      </p>
+      <form method="post" action="/api/employees/{{ employee.id }}/delete" data-confirm="Xodim butunlay o‘chiriladi. Davom etasizmi?">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="field">
+          <label for="confirm_code">Tasdiqlash kodi</label>
+          <input id="confirm_code" name="confirm_code" type="text" autocomplete="off" required>
+        </div>
+        <button class="btn danger" type="submit">Butunlay o‘chirish</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

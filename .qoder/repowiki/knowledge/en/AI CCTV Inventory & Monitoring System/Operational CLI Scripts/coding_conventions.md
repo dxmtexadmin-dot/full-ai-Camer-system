@@ -1,0 +1,4 @@
+- Every script bootstraps the project by computing `PROJECT_ROOT = Path(__file__).resolve().parent.parent`, inserting it into `sys.path`, then calling `get_settings()`, `setup_logging(...)`, and `init_db(settings)` before any business logic.
+- CLI entry points expose a `main(argv: list[str] | None = None) -> int` function returning process exit codes (0 success, 1 runtime error, 2 configuration/installation error), invoked via `raise SystemExit(main())` under `if __name__ == "__main__"`.
+- Optional heavy dependencies (e.g. `ultralytics`, `yaml`) are imported inside the function that needs them with a try/except ImportError that prints a pip install hint and returns exit code 2.
+- Database access goes through `with session_scope() as session:` rather than manual session creation/destruction.

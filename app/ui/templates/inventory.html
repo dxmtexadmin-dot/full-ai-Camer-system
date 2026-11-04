@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+{% block title %}Inventarizatsiya{% endblock %}
+
+{% block content %}
+<div class="grid cols-4" style="margin-bottom:16px">
+  <div class="kpi">
+    <div class="kpi-label">Kutilayotgan kirim</div>
+    <div class="kpi-value ok">+{{ pending_totals.pending_in }}</div>
+    <div class="kpi-hint">Tasdiqlanmagan (kamera)</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Kutilayotgan chiqim</div>
+    <div class="kpi-value {{ 'warn' if pending_totals.pending_out else '' }}">−{{ pending_totals.pending_out }}</div>
+    <div class="kpi-hint">Tasdiqlanmagan (kamera)</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Toifalar</div>
+    <div class="kpi-value">{{ balances | length }}</div>
+    <div class="kpi-hint">Faol toifalar soni</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Farqli toifalar</div>
+    <div class="kpi-value {{ 'bad' if balances | selectattr('has_issue') | list | length else 'ok' }}">
+      {{ balances | selectattr('has_issue') | list | length }}
+    </div>
+    <div class="kpi-hint">Tekshirish talab qiladi</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>Toifalar bo‘yicha qoldiq</h2>
+    <div class="spacer"></div>
+    <span class="help">Rasmiy qoldiq faqat tasdiqlangan yozuvlardan hisoblanadi.</span>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Toifa</th>
+          <th class="num">Boshlang‘ich</th>
+          <th class="num">Kutilgan</th>
+          <th class="num">Kutilayotgan kirim</th>
+          <th class="num">Kutilayotgan chiqim</th>
+          <th class="num">Prognoz</th>
+          <th class="num">Ro‘yxatdagi asset</th>
+          <th class="num">Farq</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in balances %}
+        <tr>
+          <td>
+            {{ item.label_uz }}
+            <div class="small muted mono">{{ item.category_code }}</div>
+          </td>
+          <td class="num">{{ item.initial }}</td>
+          <td class="num"><strong>{{ item.expected }}</strong></td>
+          <td class="num {{ 'ok' if item.pending_in else 'muted' }}">{{ item.pending_in or '—' }}</td>
+          <td class="num {{ 'warn' if item.pending_out else 'muted' }}">{{ item.pending_out or '—' }}</td>
+          <td class="num">{{ item.projected }}</td>
+          <td class="num">{{ item.registered_assets }}</td>
+          <td class="num">
+            {% if item.discrepancy %}
+            <span class="badge {{ 'bad' if item.discrepancy > 0 else 'warn' }}">{{ item.discrepancy }}</span>
+            {% else %}
+            <span class="muted">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="help" style="margin-top:8px">
+    «Farq» = kutilgan miqdor − ro‘yxatga olingan assetlar soni.
+    Bu ko‘rsatkich faqat assetlar mavjud bo‘lganda hisoblanadi.
+  </div>
+</div>
+
+{% if is_operator %}
+<div class="card">
+  <div class="card-head"><h2>Qo‘lda amal bajarish</h2></div>
+  <form method="post" action="/api/inventory/operation" autocomplete="off">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="field-row">
+      <div class="field">
+        <label for="operation">Amal *</label>
+        <select id="operation" name="operation" required data-inventory-operation>
+          <option value="receive">Kirim (qabul qilindi)</option>
+          <option value="remove">Chiqim (olib chiqildi)</option>
+          <option value="return">Qaytarildi</option>
+          <option value="transfer">Ichki ko‘chirish</option>
+          <option value="correct">Qo‘lda tuzatish (±)</option>
+          {% if is_admin %}<option value="initial">Boshlang‘ich qoldiq</option>{% endif %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="category_code">Toifa *</label>
+        <select id="category_code" name="category_code" required>
+          {% for item in categories %}
+          <option value="{{ item.code }}">{{ item.label_uz }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field" data-field-quantity>
+        <label for="quantity">Miqdor</label>
+        <input id="quantity" name="quantity" type="number" min="1" value="1">
+      </div>
+      <div class="field" data-field-delta style="display:none">
+        <label for="delta">Tuzatish (±)</label>
+        <input id="delta" name="delta" type="number" step="1" placeholder="-2 yoki +3">
+        <div class="help">Manfiy son qoldiqni kamaytiradi.</div>
+      </div>
+      <div class="field" data-field-location>
+        <label for="location">Joylashuv</label>
+        <input id="location" name="location" type="text" maxlength="120">
+      </div>
+    </div>
+    <div class="field">
+      <label for="reason">Sabab / izoh</label>
+      <input id="reason" name="reason" type="text" maxlength="300" placeholder="Masalan: yangi partiya qabul qilindi">
+    </div>
+    <button class="btn primary" type="submit">Jurnalga yozish</button>
+  </form>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-head">
+    <h2>Inventar jurnali</h2>
+    <div class="spacer"></div>
+    <form method="get" action="/inventory" class="filters">
+      <div class="field">
+        <select name="category">
+          <option value="">Barcha toifalar</option>
+          {% for item in categories %}
+          <option value="{{ item.code }}" {{ 'selected' if selected_category == item.code else '' }}>{{ item.label_uz }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <select name="confirmed">
+          <option value="all" {{ 'selected' if confirmed_filter == 'all' else '' }}>Barcha yozuvlar</option>
+          <option value="yes" {{ 'selected' if confirmed_filter == 'yes' else '' }}>Tasdiqlangan</option>
+          <option value="no" {{ 'selected' if confirmed_filter == 'no' else '' }}>Tasdiqlanmagan</option>
+        </select>
+      </div>
+      <button class="btn" type="submit">Filtrlash</button>
+    </form>
+  </div>
+
+  {% if ledger %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Vaqt</th>
+          <th>Toifa</th>
+          <th>Amal</th>
+          <th class="num">Miqdor</th>
+          <th>Manba</th>
+          <th>Holat</th>
+          <th>Izoh</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in ledger %}
+        <tr>
+          <td class="small nowrap">{{ row.created_at | local_dt }}</td>
+          <td class="small">{{ row.category_code }}</td>
+          <td class="small">{{ TransactionType(row.transaction_type).label_uz }}</td>
+          <td class="num mono {{ 'ok' if row.quantity > 0 else ('bad' if row.quantity < 0 else 'muted') }}">
+            {{ '%+d' % row.quantity }}
+          </td>
+          <td class="small">
+            <span class="badge {{ 'info' if row.source == 'vision' else 'outline' }}">{{ row.source }}</span>
+          </td>
+          <td>
+            {% if row.is_confirmed %}
+            <span class="badge ok">Tasdiqlangan</span>
+            {% elif row.is_rejected %}
+            <span class="badge bad">Rad etilgan</span>
+            {% else %}
+            <span class="badge warn">Kutilmoqda</span>
+            {% endif %}
+          </td>
+          <td class="small muted">{{ row.reason or '' }}{% if row.location_to %} → {{ row.location_to }}{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="help" style="margin-top:8px">Jurnal faqat qo‘shimcha yozuvlar bilan to‘ldiriladi; eski yozuvlar o‘zgartirilmaydi.</div>
+  {% else %}
+  <div class="empty">Jurnal bo‘sh.</div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% block title %}Tekshirish kerak{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-head">
+    <h2>Tasdiqlash kutayotgan hodisalar</h2>
+    <span class="badge {{ 'warn' if pending_total else 'ok' }}">{{ pending_total }}</span>
+    <div class="spacer"></div>
+    <span class="help">Kamera aniqlagan harakatlar avtomatik tasdiqlanmaydi. <strong>Rad etishda sabab majburiy.</strong></span>
+  </div>
+  {% if not events %}
+  <div class="empty">Tekshirish uchun hodisa yo‘q. Barcha yozuvlar ko‘rib chiqilgan.</div>
+  {% endif %}
+</div>
+
+{% for event in events %}
+<div class="card">
+  <div class="card-head">
+    <span class="badge {{ 'warn' if 'UNKNOWN' in event.event_type else 'info' }}">{{ event.type_label_uz }}</span>
+    <strong class="mono">{{ event.public_id }}</strong>
+    <span class="small muted">{{ event.occurred_at | local_dt }} · {{ event.camera_code }}</span>
+    <div class="spacer"></div>
+    <span class="badge outline">{{ event.status_label_uz }}</span>
+  </div>
+
+  <div class="split">
+    <div style="flex:0 0 260px;min-width:200px">
+      {% if event.evidence_path %}
+      <a href="/api/events/{{ event.public_id }}/evidence" target="_blank" rel="noopener">
+        <img src="/api/events/{{ event.public_id }}/evidence" alt="Dalil rasmi"
+             style="width:100%;border-radius:10px;border:1px solid var(--border)">
+      </a>
+      {% else %}
+      <div class="empty" style="border:1px dashed var(--border);border-radius:10px;padding:32px 12px">
+        Dalil rasmi saqlanmagan
+      </div>
+      {% endif %}
+    </div>
+
+    <div style="flex:1 1 420px;min-width:300px">
+      <div class="stat-line"><span>Xodim (tizim taxmini)</span><span>{{ event.employee_label }}</span></div>
+      <div class="stat-line"><span>Jihoz toifasi</span><span>{{ event.equipment_category or '—' }}</span></div>
+      <div class="stat-line"><span>Yo‘nalish</span><span>{{ event.direction_label_uz }}</span></div>
+      <div class="stat-line">
+        <span>Deteksiya ishonchi</span>
+        <span class="mono">{{ event.detection_confidence | score }}</span>
+      </div>
+      <div class="stat-line">
+        <span>Yuz o‘xshashligi</span>
+        <span class="mono">{{ event.face_match_score | score }}</span>
+      </div>
+      <div class="stat-line">
+        <span>Bog‘lanish ishonchi</span>
+        <span class="mono">{{ event.association_confidence | score }}</span>
+      </div>
+      {% if event.notes %}
+      <div class="help" style="margin-top:8px">{{ event.notes }}</div>
+      {% endif %}
+
+      <hr class="sep">
+      <form method="post" action="/api/events/{{ event.id }}/review">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="decision" value="CONFIRMED" data-decision-input>
+        <input type="hidden" name="next_url" value="/review">
+
+        <div class="field-row">
+          <div class="field">
+            <label>Xodimni aniqlashtirish</label>
+            <select name="employee_id">
+              <option value="">— o‘zgartirmaslik —</option>
+              {% for item in employees %}
+              <option value="{{ item.id }}">{{ item.employee_code }} — {{ item.full_name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="field">
+            <label>Toifani aniqlashtirish</label>
+            <select name="category_code">
+              <option value="">— o‘zgartirmaslik —</option>
+              {% for item in categories %}
+              <option value="{{ item.code }}">{{ item.label_uz }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="field">
+            <label>Asset ID (ixtiyoriy)</label>
+            <input type="number" name="asset_id" min="1" placeholder="masalan 12">
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="reason-{{ event.id }}">Izoh / sabab <span style="color:#dc2626">*</span></label>
+          <textarea id="reason-{{ event.id }}" name="reason" rows="2" maxlength="500"
+                    data-reason-input
+                    placeholder="Rad etishda sabab majburiy — masalan: noto‘g‘ri aniqlangan obyekt"></textarea>
+          <div class="help" data-reason-error hidden style="color:#dc2626;font-weight:600">
+            Rad etish uchun sabab kiritilishi shart — maydonni to‘ldiring.
+          </div>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn primary" type="submit" data-decision="CONFIRMED">Tasdiqlash</button>
+          <button class="btn danger" type="submit" data-decision="REJECTED">Rad etish</button>
+        </div>
+        <div class="help" style="margin-top:6px">
+          Tasdiqlash jurnalga tasdiqlangan yozuv qo‘shadi va qoldiqni o‘zgartiradi.
+          Rad etish yozuvni saqlaydi, ammo qoldiqqa ta’sir qilmaydi.
+        </div>
+      </form>
+
+      {% if is_admin %}
+      <hr class="sep">
+      <div class="btn-row">
+        <form method="post" action="/api/events/{{ event.id }}/evidence/delete" class="inline-form"
+              data-confirm="Bu hodisaning dalil rasmi butunlay o‘chiriladi. Davom etilsinmi?">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="next_url" value="/review">
+          <button class="btn small ghost" type="submit">Dalil rasmini o‘chirish</button>
+        </form>
+        <form method="post" action="/api/events/{{ event.id }}/delete" class="inline-form"
+              data-confirm="Hodisa yozuvi butunlay o‘chiriladi va qaytarilmaydi. Davom etilsinmi?">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="next_url" value="/review">
+          <button class="btn small danger" type="submit">Hodisani o‘chirish</button>
+        </form>
+      </div>
+      <div class="help">O‘chirish faqat administrator uchun; har bir amal audit jurnaliga yoziladi.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endfor %}
+
+{% if balances %}
+<div class="card">
+  <div class="card-head"><h2>Inventar farqlari</h2></div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Toifa</th>
+          <th class="num">Kutilgan</th>
+          <th class="num">Kutilayotgan chiqim</th>
+          <th class="num">Farq</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in balances %}
+        <tr>
+          <td>{{ item.label_uz }} <span class="small muted mono">{{ item.category_code }}</span></td>
+          <td class="num">{{ item.expected }}</td>
+          <td class="num">{{ item.pending_out }}</td>
+          <td class="num">
+            <span class="badge {{ 'bad' if item.discrepancy > 0 else 'warn' }}">{{ item.discrepancy }}</span>
+          </td>
+          <td><a class="btn small" href="/movements?category={{ item.category_code }}&status=PENDING">Hodisalarni ko‘rish</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

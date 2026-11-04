@@ -1,0 +1,2 @@
+- Configuration is centralized through `app.config.get_settings()` reading from `.env` rather than environment variables directly.
+- CLI entry points live in `scripts/` as standalone Python files invoked independently of the FastAPI server.

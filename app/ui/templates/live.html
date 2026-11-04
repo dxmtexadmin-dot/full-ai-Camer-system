@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block title %}Jonli kamera{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-head">
+    <h2>Kamera tanlash</h2>
+    <div class="spacer"></div>
+    <a class="btn small" href="/api/cameras/{{ selected_code }}/snapshot" target="_blank" rel="noopener">Kadrni ochish</a>
+  </div>
+  {% if cameras %}
+  <div class="btn-row">
+    {% for item in cameras %}
+    <a class="btn small {{ 'primary' if item.code == selected_code else '' }}" href="/live?camera={{ item.code }}">
+      {{ item.code }}
+      <span class="muted">· {{ item.name }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty">Tizimda kamera yo‘q. {% if is_admin %}<a href="/cameras">Kamera qo‘shish</a>{% endif %}</div>
+  {% endif %}
+</div>
+
+{% if selected_code %}
+<div class="split">
+  <div style="flex:2 1 620px;min-width:320px">
+    <div class="stream-box">
+      <div class="stream-overlay">
+        <span class="dot {{ 'live' if selected_row and selected_row.running else 'down' }}"></span>
+        {{ selected_code }}
+        <span class="muted">·</span>
+        {{ (selected_row.status.label_uz if selected_row else 'Noma’lum') }}
+      </div>
+      <img data-stream="/api/cameras/{{ selected_code }}/stream"
+           src="/api/cameras/{{ selected_code }}/stream"
+           alt="{{ selected_code }} jonli oqimi">
+    </div>
+    <div class="help" style="margin-top:8px">
+      Oqim MJPEG formatida (kadr ustiga chiziq va aniqlangan obyektlar chiziladi).
+      Brauzer oqimni to‘xtatsa, sahifani yangilang.
+    </div>
+  </div>
+
+  <div style="flex:1 1 300px;min-width:280px">
+    <div class="card" {% if selected_row %}data-camera-status="{{ selected_code }}"{% endif %}>
+      <div class="card-head"><h2>Holat</h2></div>
+      {% if selected_row %}
+      <div class="stat-line">
+        <span>Ulanish</span>
+        <span class="badge {{ 'ok' if selected_row.running else 'bad' }}" data-status-badge>{{ selected_row.status.label_uz }}</span>
+      </div>
+      {% if selected_row.message %}
+      <div class="help" style="margin-top:4px">{{ selected_row.message }}</div>
+      {% endif %}
+      <div class="stat-line">
+        <span>Qabul qilingan kadr</span>
+        <span class="mono" data-frames>{{ selected_row.frames }}</span>
+      </div>
+      <div class="stat-line">
+        <span>Tashlab yuborilgan</span>
+        <span class="mono" data-dropped>{{ selected_row.dropped }}</span>
+      </div>
+      <div class="stat-line">
+        <span>Oxirgi kadr</span>
+        <span class="small">{{ selected_row.last_frame | local_short }}</span>
+      </div>
+      {% if selected_row.pipeline %}
+      <div class="stat-line">
+        <span>Kuzatuvdagi obyekt</span>
+        <span class="mono" data-detected>{{ selected_row.pipeline.tracks }}</span>
+      </div>
+      <div class="stat-line">
+        <span>Qayta ishlangan kadr</span>
+        <span class="mono">{{ selected_row.pipeline.frames_processed }}</span>
+      </div>
+      <div class="stat-line">
+        <span>Yaratilgan hodisa</span>
+        <span class="mono">{{ selected_row.pipeline.events_created }}</span>
+      </div>
+      {% if selected_row.pipeline.processing_errors %}
+      <div class="stat-line">
+        <span>Xatoliklar</span>
+        <span class="badge bad">{{ selected_row.pipeline.processing_errors }}</span>
+      </div>
+      {% endif %}
+      {% else %}
+      <div class="help">
+        Pipeline ishga tushmagan (kamera o‘chirilgan yoki model mavjud emas).
+      </div>
+      {% endif %}
+      {% else %}
+      <div class="empty">Kamera topilmadi.</div>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>So‘nggi hodisalar</h2>
+        <div class="spacer"></div>
+        <a class="btn small" href="/movements?camera={{ selected_code }}">Barchasi</a>
+      </div>
+      {% if recent_events %}
+      <ul class="list">
+        {% for event in recent_events %}
+        <li>
+          <span class="badge {{ 'warn' if 'UNKNOWN' in event.event_type else 'muted' }}">{{ event.type_label_uz }}</span>
+          <span class="small">{{ event.employee_label }}</span>
+          <span class="when">{{ event.occurred_at | local_dt }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <div class="empty">Bu kamerada hodisa qayd etilmagan.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-head"><h2>Barcha kameralar</h2></div>
+  {% if rows %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Kod</th>
+          <th>Nomi</th>
+          <th>Manba</th>
+          <th>Holat</th>
+          <th class="num">Kadr</th>
+          <th>Oxirgi kadr</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td><a href="/live?camera={{ row.camera.code }}">{{ row.camera.code }}</a></td>
+          <td>{{ row.camera.name }}</td>
+          <td class="small muted mono">{{ row.camera.source_type }}{% if row.camera.has_line %} · chiziq{% endif %}</td>
+          <td>
+            {% set st = row.status.value %}
+            <span class="badge {{ 'ok' if st == 'ONLINE' else ('bad' if st in ['OFFLINE', 'ERROR'] else 'muted') }}">{{ row.status.label_uz }}</span>
+          </td>
+          <td class="num mono">{{ row.frames }}</td>
+          <td class="small muted">{{ row.last_frame | local_short }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">Ma’lumot yo‘q.</div>
+  {% endif %}
+</div>
+{% endblock %}

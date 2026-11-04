@@ -1,0 +1,1 @@
+Python 3.11+ with FastAPI + Uvicorn as the web server, SQLAlchemy 2.x for persistence, OpenCV/Pillow for image processing, gspread/google-auth for Google Sheets sync, and pytest + httpx for testing.

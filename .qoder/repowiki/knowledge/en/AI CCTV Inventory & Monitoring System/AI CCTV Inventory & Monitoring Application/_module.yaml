@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: app
+title: AI CCTV Inventory & Monitoring Application
+scope:
+    - app/
+source_files: []
+depends_on: []
+related_to:
+    - path: scripts
+    - path: tests

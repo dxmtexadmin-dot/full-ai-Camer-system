@@ -1,0 +1,348 @@
+{% extends "base.html" %}
+{% block title %}Google Sheets{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-head">
+    <h2>Google Sheets bilan ulash</h2>
+    <div class="spacer"></div>
+    {% if ready %}
+    <span class="badge ok">Ulangan</span>
+    {% elif sheets.enabled %}
+    <span class="badge warn">Sozlama tugallanmagan</span>
+    {% else %}
+    <span class="badge muted">O‘chirilgan</span>
+    {% endif %}
+  </div>
+  <p class="help">
+    Google Sheets — <strong>hisobot oynasi</strong>, asosiy baza emas: barcha yozuvlar avval lokal
+    bazaga tushadi, jadval esa faqat nusxani ko‘rsatadi. Internet yoki Google to‘xtab qolsa ham
+    kameralar va inventar ishlashda davom etadi.
+  </p>
+
+  {% if sheets.spreadsheet_id_warning %}
+  <div class="notice warn">
+    <strong>Diqqat:</strong> {{ sheets.spreadsheet_id_warning }}
+    Havola namunasi:
+    <span class="mono">https://docs.google.com/spreadsheets/d/&lt;ID&gt;/edit</span>
+  </div>
+  {% endif %}
+  {% if credentials.path and not credentials.exists %}
+  <div class="notice error">
+    <strong>Kalit fayli topilmadi:</strong>
+    <span class="mono" style="word-break:break-all">{{ credentials.path }}</span>
+    — 2-qadamda JSON faylni qaytadan yuklang.
+  </div>
+  {% endif %}
+
+  <div class="grid cols-4">
+    <div>
+      <div class="kpi-label">Service account</div>
+      {% if credentials.client_email %}
+      <div class="kpi-value ok">Tayyor</div>
+      <div class="help mono" style="word-break:break-all">{{ credentials.client_email }}</div>
+      {% else %}
+      <div class="kpi-value bad">Yo‘q</div>
+      <div class="help">{{ credentials.error or 'Kalit yuklanmagan.' }}</div>
+      {% endif %}
+    </div>
+    <div>
+      <div class="kpi-label">Jadval</div>
+      {% if sheets.spreadsheet_id %}
+      <div class="kpi-value ok">Ulangan</div>
+      <div class="help mono" style="word-break:break-all">{{ sheets.spreadsheet_id }}</div>
+      {% else %}
+      <div class="kpi-value bad">Yo‘q</div>
+      <div class="help">Spreadsheet ID kiritilmagan.</div>
+      {% endif %}
+    </div>
+    <div>
+      <div class="kpi-label">Sinxronizatsiya kutayotgan hodisa</div>
+      <div class="kpi-value {{ 'warn' if counts.unsynced else 'ok' }}">{{ counts.unsynced }}</div>
+      <div class="help">Interval: {{ sheets.interval_seconds }} s</div>
+    </div>
+    <div>
+      <div class="kpi-label">Oxirgi natija</div>
+      <div class="small">{{ sheets.last_result or '—' }}</div>
+      <div class="help">{{ sheets.last_run_at or 'hali ishlamagan' }}</div>
+    </div>
+  </div>
+
+  <hr class="sep">
+  <div class="btn-row">
+    <form method="post" action="/api/sheets/test" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn small primary" type="submit">Sinovdan o‘tkazish</button>
+    </form>
+    <form method="post" action="/api/sheets/sync" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="next" value="/sheets">
+      <button class="btn small" type="submit" {{ 'disabled' if not sheets.configured else '' }}>
+        Hozir sinxronlash
+      </button>
+    </form>
+    <form method="post" action="/api/sheets/toggle" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      {% if sheets.enabled %}
+      <input type="hidden" name="enabled" value="off">
+      <button class="btn small ghost" type="submit">Avtomatik sinxronizatsiyani to‘xtatish</button>
+      {% else %}
+      <input type="hidden" name="enabled" value="on">
+      <button class="btn small" type="submit">Avtomatik sinxronizatsiyani yoqish</button>
+      {% endif %}
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>1-qadam — Google Cloud’da service account</h2>
+    <div class="spacer"></div>
+    <span class="help">~5 daqiqa, brauzerda</span>
+  </div>
+  <ol class="help" style="margin:6px 0 0 20px;line-height:1.9">
+    <li>
+      <a href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noopener">console.cloud.google.com</a>
+      da loyiha yarating (yoki mavjudini tanlang).
+    </li>
+    <li>
+      <a href="https://console.cloud.google.com/apis/library/sheets.googleapis.com" target="_blank" rel="noopener">Google Sheets API</a>
+      sahifasida <strong>Enable</strong> tugmasini bosing.
+    </li>
+    <li>
+      <a href="https://console.cloud.google.com/iam-admin/serviceaccounts" target="_blank" rel="noopener">IAM → Service accounts</a>
+      → <strong>Create service account</strong>. Nomi: <code>face-date-sheets</code>, rol talab qilinmaydi.
+    </li>
+    <li>
+      Yaratilgan account’ni oching → <strong>Keys</strong> → <strong>Add key → Create new key → JSON</strong>.
+      Fayl kompyuterga yuklanadi — uni hech kimga yubormang va git’ga qo‘shmang.
+    </li>
+  </ol>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>2-qadam — kalitni yuklash</h2>
+    <div class="spacer"></div>
+    {% if credentials.client_email %}<span class="badge ok">Kalit saqlangan</span>
+    {% else %}<span class="badge warn">Kutilmoqda</span>{% endif %}
+  </div>
+
+  <form method="post" action="/api/sheets/credentials" enctype="multipart/form-data" autocomplete="off">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="field-row">
+      <div class="field">
+        <label for="key-file">JSON fayl</label>
+        <input id="key-file" name="file" type="file" accept="application/json,.json">
+        <div class="help">Google Cloud’dan yuklab olingan <code>.json</code> fayl.</div>
+      </div>
+      <div class="field" style="flex:2">
+        <label for="json_text">…yoki JSON matnini joylashtiring</label>
+        <textarea id="json_text" name="json_text" rows="3" placeholder='{"type": "service_account", "project_id": "…"}'></textarea>
+        <div class="help">Ikkalasi bo‘sh bo‘lsa, saqlanmaydi. Fayl 64 KB dan oshmasligi kerak.</div>
+      </div>
+    </div>
+    <div class="btn-row" style="margin-top:8px">
+      <button class="btn primary" type="submit">Kalitni saqlash</button>
+      <span class="help">Fayl <code>secrets/google_service_account.json</code> sifatida 0600 ruxsat bilan saqlanadi.</span>
+    </div>
+  </form>
+
+  {% if credentials.client_email %}
+  <hr class="sep">
+  <div class="field">
+    <label>Jadvalni shu manzil bilan bo‘lishing</label>
+    <div class="btn-row" style="margin-top:0">
+      <code id="sa-email" class="mono">{{ credentials.client_email }}</code>
+      <button class="btn small ghost" type="button" data-copy="#sa-email">Nusxalash</button>
+    </div>
+    <div class="help">
+      Google Sheets’da jadvalni oching → <strong>Share</strong> → shu email’ni qo‘ying →
+      ruxsat <strong>Editor</strong> → <strong>Send</strong>. «Notifications» belgisini olib tashlash mumkin.
+    </div>
+  </div>
+  {% endif %}
+  {% if credentials.path %}
+  <div class="help" style="margin-top:6px">Fayl: <code>{{ credentials.path }}</code></div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>3-qadam — jadvalni ulash</h2>
+    <div class="spacer"></div>
+    {% if sheets.spreadsheet_id %}<a class="btn small" href="{{ spreadsheet_url }}" target="_blank" rel="noopener">Jadvalni ochish</a>{% endif %}
+  </div>
+  <p class="help">
+    Bo‘sh Google Sheets jadval yarating (yoki mavjudini oling) va havolasini pastga qo‘ying —
+    to‘liq URL ham, faqat ID ham qabul qilinadi.
+  </p>
+
+  <form method="post" action="/api/sheets/spreadsheet" autocomplete="off">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="field-row">
+      <div class="field" style="flex:2">
+        <label for="spreadsheet">Jadval havolasi yoki ID</label>
+        <input id="spreadsheet" name="spreadsheet" type="text"
+               value="{{ spreadsheet_url or sheets.spreadsheet_id }}"
+               placeholder="https://docs.google.com/spreadsheets/d/…/edit">
+      </div>
+      <div class="field">
+        <label for="interval">Sinxronizatsiya intervali (s)</label>
+        <input id="interval" name="interval" type="number" step="1" min="15" max="86400"
+               value="{{ sheets.interval_seconds }}">
+        <div class="help">15–86400. Standart 120 s.</div>
+      </div>
+    </div>
+    <label class="checkbox" style="margin-top:8px">
+      <input type="checkbox" name="enable" {{ 'checked' if sheets.enabled else '' }}>
+      Ulashdan keyin avtomatik sinxronizatsiyani yoqish
+    </label>
+    <div class="btn-row" style="margin-top:10px">
+      <button class="btn primary" type="submit">Jadvalni ulash</button>
+      <span class="help">Qiymat <code>.env</code> fayliga yoziladi va darhol qo‘llanadi.</span>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>Varaqlar</h2>
+    <div class="spacer"></div>
+    <form method="post" action="/api/sheets/prepare" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn small" type="submit" {{ 'disabled' if not sheets.configured else '' }}>
+        Varaqlarni tayyorlash
+      </button>
+    </form>
+  </div>
+  <p class="help">
+    Tizim jadvalda 4 ta varaqni o‘zi yaratadi va sarlavha qatorini yozadi. Mavjud varaqlarga
+    tegilmaydi; ma’lumot birinchi sinxronizatsiyada to‘ladi.
+  </p>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Varaq nomi</th>
+          <th class="num">Ustunlar</th>
+          <th>Manba</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for title, columns in sheet_layout %}
+        <tr>
+          <td class="mono">{{ title }}</td>
+          <td class="num mono">{{ columns }}</td>
+          <td class="small muted">
+            {% if title == 'Employees' %}Xodimlar ro‘yxati (upsert)
+            {% elif title == 'Equipment' %}Jihozlar ro‘yxati (upsert)
+            {% elif title == 'MovementEvents' %}Hodisalar jurnali (Event ID bo‘yicha takrorlanmaydi)
+            {% else %}Inventar qoldiqlari (har safar to‘liq yangilanadi){% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="help" style="margin-top:8px">
+    Jadvalda qo‘lda yozilgan ustun yoki satr bo‘lsa, ular o‘chirilmaydi — tizim faqat o‘z
+    ustunlarini yangilaydi.
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>Sinxronizatsiya tarixi</h2>
+    <div class="spacer"></div>
+    <a class="btn small ghost" href="/reports#sheets">Hisobotlar bo‘limi</a>
+  </div>
+  {% if logs %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Vaqt</th>
+          <th>Holat</th>
+          <th class="num">Yuborildi</th>
+          <th class="num">Xato</th>
+          <th>Manba</th>
+          <th>Xabar</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in logs %}
+        <tr>
+          <td class="small nowrap">{{ log.started_at | local_dt }}</td>
+          <td>
+            <span class="badge {{ 'ok' if log.status == 'SYNCED' else ('bad' if log.status == 'FAILED' else 'muted') }}">{{ log.status }}</span>
+          </td>
+          <td class="num mono">{{ log.pushed }}</td>
+          <td class="num mono">{{ log.failed }}</td>
+          <td class="small">{{ log.triggered_by }}</td>
+          <td class="small muted">{{ (log.message or '') | truncate(90) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">Hali sinxronizatsiya qilinmagan.</div>
+  {% endif %}
+  <div class="help" style="margin-top:8px">
+    Xato bo‘lsa hodisalar <code>FAILED</code> deb belgilanadi va keyingi urinishda yana yuboriladi —
+    ma’lumot yo‘qolmaydi.
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>Xavfsizlik</h2></div>
+  <ul class="list">
+    <li>
+      <span class="small">Kalit faqat <code>secrets/</code> papkasida saqlanadi, brauzerga
+        qaytarilmaydi va jurnalga yozilmaydi.</span>
+      <span class="when mono">KEY</span>
+    </li>
+    <li>
+      <span class="small">Service account’ga jadvalni bo‘lishish kifoya — Google akkaunt paroli
+        yoki API kaliti kerak emas.</span>
+      <span class="when mono">ACCESS</span>
+    </li>
+  </ul>
+  <details class="details" style="margin-top:6px">
+    <summary>Kalitni o‘chirish (ulanishni uzish)</summary>
+    <form method="post" action="/api/sheets/forget" style="margin-top:10px">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="help">
+        Kalit fayli o‘chiriladi, sinxronizatsiya to‘xtatiladi. Lokal baza va yuklab olish
+        ishlashda davom etadi; qayta ulash uchun 2–3 qadamni takrorlang.
+      </div>
+      <button class="btn danger small" type="submit" style="margin-top:8px">Kalitni o‘chirish</button>
+    </form>
+  </details>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.querySelectorAll('[data-copy]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      var target = document.querySelector(button.getAttribute('data-copy'));
+      if (!target) { return; }
+      var text = target.textContent.trim();
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text);
+      } else {
+        var area = document.createElement('textarea');
+        area.value = text;
+        document.body.appendChild(area);
+        area.select();
+        document.execCommand('copy');
+        document.body.removeChild(area);
+      }
+      button.textContent = 'Nusxalandi';
+      setTimeout(function () { button.textContent = 'Nusxalash'; }, 1500);
+    });
+  });
+</script>
+{% endblock %}

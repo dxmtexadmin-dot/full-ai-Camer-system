@@ -1,0 +1,58 @@
+# 知识卡导出索引文件
+schema_version: 1
+locale: en-US
+branch: Q0DeR-MaG1C-BrAnCh-Fo2-NoN-GiT-Or-No-C0MmIt
+nodes_managed: true
+exported_at: "2026-10-28T09:25:34Z"
+modules:
+    "":
+        dir_name: AI CCTV Inventory & Monitoring System
+        title: AI CCTV Inventory & Monitoring System
+        scope:
+            - README.md
+            - .gitignore
+            - pytest.ini
+            - requirements.txt
+            - requirements-ai.txt
+            - run.bat
+            - run.sh
+            - run.py
+            - .env.example
+        source_files: []
+        children:
+            - app
+            - scripts
+            - tests
+        depends_on: []
+        related_to: []
+    app:
+        dir_name: AI CCTV Inventory & Monitoring Application
+        title: AI CCTV Inventory & Monitoring Application
+        scope:
+            - app/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: scripts
+            - path: tests
+    scripts:
+        dir_name: Operational CLI Scripts
+        title: Operational CLI Scripts
+        scope:
+            - scripts/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: app
+    tests:
+        dir_name: Pytest Test Suite for CCTV Dashboard
+        title: Pytest Test Suite for CCTV Dashboard
+        scope:
+            - tests/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: app

@@ -1,0 +1,297 @@
+{% extends "base.html" %}
+{% block title %}Jihozlar{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-head">
+    <h2>Ro‘yxatga olingan jihozlar</h2>
+    <span class="badge outline">{{ assets | length }}</span>
+    <div class="spacer"></div>
+    <form method="get" action="/equipment" class="filters">
+      <div class="field">
+        <input type="search" name="q" value="{{ query }}" placeholder="Kod, model, seriya raqami">
+      </div>
+      <div class="field">
+        <select name="category">
+          <option value="">Barcha toifalar</option>
+          {% for item in categories %}
+          <option value="{{ item.code }}" {{ 'selected' if selected_category == item.code else '' }}>{{ item.label_uz }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <select name="status">
+          <option value="">Barcha holatlar</option>
+          {% for item in statuses %}
+          <option value="{{ item.value }}" {{ 'selected' if selected_status == item.value else '' }}>{{ item.label_uz }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button class="btn" type="submit">Filtrlash</button>
+    </form>
+  </div>
+
+  {% if assets %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Asset ID</th>
+          <th>Toifa</th>
+          <th>Brend / model</th>
+          <th>Seriya raqami</th>
+          <th>Joylashuv</th>
+          <th>Holat</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for asset in assets %}
+        <tr>
+          <td class="mono">{{ asset.asset_code }}</td>
+          <td class="small">{{ asset.category.label_uz if asset.category else '—' }}</td>
+          <td class="small">{{ asset.brand or '—' }}<div class="muted">{{ asset.model or '' }}</div></td>
+          <td class="small mono">{{ asset.serial_number or '—' }}</td>
+          <td class="small">{{ asset.location or '—' }}</td>
+          <td><span class="badge {{ 'ok' if asset.status == 'IN_STOCK' else ('warn' if asset.status in ['MAINTENANCE', 'LOST'] else 'info') }}">{{ asset.status_label_uz }}</span></td>
+          <td style="min-width:240px">
+            <details class="details">
+              <summary>Tahrirlash</summary>
+              <form method="post" action="/api/equipment/{{ asset.id }}/update">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="field">
+                  <label>Toifa</label>
+                  <select name="category_code">
+                    {% for item in categories %}
+                    <option value="{{ item.code }}" {{ 'selected' if asset.category and asset.category.code == item.code else '' }}>{{ item.label_uz }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="field-row">
+                  <div class="field">
+                    <label>Brend</label>
+                    <input type="text" name="brand" value="{{ asset.brand }}" maxlength="80">
+                  </div>
+                  <div class="field">
+                    <label>Model</label>
+                    <input type="text" name="model" value="{{ asset.model }}" maxlength="120">
+                  </div>
+                </div>
+                <div class="field-row">
+                  <div class="field">
+                    <label>Seriya raqami</label>
+                    <input type="text" name="serial_number" value="{{ asset.serial_number or '' }}" maxlength="120">
+                  </div>
+                  <div class="field">
+                    <label>Inventar teg</label>
+                    <input type="text" name="asset_tag" value="{{ asset.asset_tag or '' }}" maxlength="120">
+                  </div>
+                </div>
+                <div class="field-row">
+                  <div class="field">
+                    <label>Joylashuv</label>
+                    <input type="text" name="location" value="{{ asset.location }}" maxlength="120">
+                  </div>
+                  <div class="field">
+                    <label>Holat</label>
+                    <select name="status">
+                      {% for item in statuses %}
+                      <option value="{{ item.value }}" {{ 'selected' if asset.status == item.value else '' }}>{{ item.label_uz }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                </div>
+                <div class="field">
+                  <label>Izoh</label>
+                  <textarea name="notes" maxlength="1000">{{ asset.notes or '' }}</textarea>
+                </div>
+                <button class="btn primary small" type="submit">Saqlash</button>
+              </form>
+            </details>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">Jihoz topilmadi. Quyidagi forma orqali ro‘yxatga oling.</div>
+  {% endif %}
+</div>
+
+<div class="split">
+  <div style="flex:1 1 380px;min-width:300px">
+    <div class="card">
+      <div class="card-head"><h2>Yangi jihoz</h2></div>
+      <form method="post" action="/api/equipment" autocomplete="off">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="field">
+          <label for="category_code">Toifa *</label>
+          <select id="category_code" name="category_code" required>
+            {% for item in categories %}
+            <option value="{{ item.code }}">{{ item.label_uz }} ({{ item.code }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label for="asset_code">Asset ID</label>
+          <input id="asset_code" name="asset_code" type="text" placeholder="MON-001" maxlength="48">
+          <div class="help">
+            Bo‘sh qoldirilsa avtomatik beriladi:
+            {% for item in categories[:4] %}<code>{{ next_codes[item.code] }}</code> {% endfor %}
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="brand">Brend</label>
+            <input id="brand" name="brand" type="text" maxlength="80">
+          </div>
+          <div class="field">
+            <label for="model">Model</label>
+            <input id="model" name="model" type="text" maxlength="120">
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="serial_number">Seriya raqami</label>
+            <input id="serial_number" name="serial_number" type="text" maxlength="120">
+          </div>
+          <div class="field">
+            <label for="asset_tag">Inventar teg</label>
+            <input id="asset_tag" name="asset_tag" type="text" maxlength="120">
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="location">Joylashuv</label>
+            <input id="location" name="location" type="text" maxlength="120" placeholder="2-qavat, 204-xona">
+          </div>
+          <div class="field">
+            <label for="status">Holat</label>
+            <select id="status" name="status">
+              {% for item in statuses %}
+              <option value="{{ item.value }}">{{ item.label_uz }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label for="notes">Izoh</label>
+          <textarea id="notes" name="notes" maxlength="1000"></textarea>
+        </div>
+        <button class="btn primary" type="submit">Ro‘yxatga olish</button>
+      </form>
+    </div>
+  </div>
+
+  <div style="flex:1 1 520px;min-width:320px">
+    <div class="card">
+      <div class="card-head">
+        <h2>Toifalar va YOLO sinflari</h2>
+        <div class="spacer"></div>
+        <span class="help">Model qayta o‘qitilsa, moslikni shu yerdan yangilang.</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Toifa</th>
+              <th>YOLO sinflari</th>
+              <th class="num">Asset</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in categories %}
+            <tr>
+              <td>
+                {{ item.label_uz }}
+                <div class="small muted mono">{{ item.code }}{% if item.is_person %} · person{% endif %}</div>
+              </td>
+              <td class="small mono">{{ item.yolo_labels | join(', ') }}</td>
+              <td class="num mono">{{ counts[item.code] }}</td>
+              <td style="min-width:230px">
+                {% if not item.is_person %}
+                <div style="margin-bottom:8px">
+                  <a class="btn small ghost" href="/training?code={{ item.code }}">Namuna rasmlar</a>
+                </div>
+                {% endif %}
+                <details class="details">
+                  <summary>Sozlash</summary>
+                  <form method="post" action="/api/categories/{{ item.id }}/update">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <div class="field">
+                      <label>Nomi (o‘zbekcha)</label>
+                      <input type="text" name="label_uz" value="{{ item.label_uz }}" required maxlength="120">
+                    </div>
+                    <div class="field">
+                      <label>YOLO sinflari (vergul bilan)</label>
+                      <input type="text" name="yolo_labels" value="{{ item.yolo_labels | join(', ') }}" required>
+                    </div>
+                    <div class="field">
+                      <label>Minimal ishonch</label>
+                      <input type="number" name="min_confidence" step="0.01" min="0.05" max="0.99"
+                             value="{{ item.min_confidence if item.min_confidence is not none else '' }}" placeholder="global">
+                    </div>
+                    <label class="checkbox" style="margin-bottom:10px">
+                      <input type="checkbox" name="is_active" {{ 'checked' if item.is_active else '' }}>
+                      Faol
+                    </label>
+                    <button class="btn primary small" type="submit">Saqlash</button>
+                  </form>
+                </details>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>Yangi texnika toifasi</h2>
+    <div class="spacer"></div>
+    <span class="help">Mavjud toifalar o‘zgarmaydi — yangisi qo‘shiladi</span>
+  </div>
+  <form method="post" action="/api/categories" autocomplete="off">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="field-row">
+      <div class="field">
+        <label for="new_category_code">Kod *</label>
+        <input id="new_category_code" name="code" type="text" required maxlength="48"
+               pattern="[a-z][a-z0-9_]{1,47}" placeholder="drill">
+        <div class="help">Kichik lotin harflari, raqam va pastki chiziq (masalan: drill, hammer_drill).</div>
+      </div>
+      <div class="field">
+        <label for="new_category_label">Nomi (o‘zbekcha) *</label>
+        <input id="new_category_label" name="label_uz" type="text" required maxlength="120"
+               placeholder="Perforator">
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="new_category_yolo">YOLO sinflari (vergul bilan) *</label>
+        <input id="new_category_yolo" name="yolo_labels" type="text" required placeholder="drill, hammer drill">
+      </div>
+      <div class="field">
+        <label for="new_category_conf">Minimal ishonch</label>
+        <input id="new_category_conf" name="min_confidence" type="number" step="0.01"
+               min="0.05" max="0.99" placeholder="global">
+      </div>
+    </div>
+    <div class="field">
+      <label for="new_category_notes">Izoh</label>
+      <textarea id="new_category_notes" name="notes" maxlength="1000"></textarea>
+    </div>
+    <div class="notice warn">
+      Yangi toifa faqat model o‘sha sinfni taniyotgan bo‘lsa ishlaydi.
+      Buning uchun YOLO qo‘shimcha sinf bilan qayta o‘qitiladi va sinf nomi shu yerga yoziladi —
+      keyin kod o‘zgartirish kerak emas (README «YOLO o‘qitish» bo‘limi).
+    </div>
+    <button class="btn primary" type="submit">Toifa qo‘shish</button>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,1 @@
+Standalone Python CLI entry points for registering employees, syncing Google Sheets, testing camera sources, and preparing/training YOLO object-detection datasets.

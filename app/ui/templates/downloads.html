@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Yuklab olish{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-head">
+    <h2>Ma’lumotlarni yuklab olish</h2>
+    <div class="spacer"></div>
+    <span class="badge outline">{{ total_rows }} qator</span>
+  </div>
+  <p class="help">
+    Barcha fayllar lokal bazadan olinadi — yuklab olish ma’lumotni o‘zgartirmaydi.
+    Har bir yuklab olish <strong>audit jurnaliga</strong> yoziladi (kim, qachon, qaysi fayl).
+  </p>
+
+  <form method="get" action="/downloads" class="field-row" style="align-items:flex-end">
+    <div class="field">
+      <label for="start">Boshlanish sanasi</label>
+      <input id="start" name="start" type="date" value="{{ start }}">
+    </div>
+    <div class="field">
+      <label for="end">Tugash sanasi</label>
+      <input id="end" name="end" type="date" value="{{ end }}">
+    </div>
+    <div class="field" style="flex:0 0 auto">
+      <button class="btn primary" type="submit">Davrni qo‘llash</button>
+    </div>
+    {% if range_active %}
+    <div class="field" style="flex:0 0 auto">
+      <a class="btn small ghost" href="/downloads">Tozalash</a>
+    </div>
+    {% endif %}
+  </form>
+  <div class="help">
+    Sana oralig‘i <strong>Inventar jurnali</strong> va <strong>Hodisalar</strong> ga qo‘llanadi
+    (qolgan fayllar to‘liq holatni beradi). Vaqtlar mahalliy vaqtda ({{ settings.timezone }}).
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>Bitta faylda hammasi</h2>
+    <div class="spacer"></div>
+    <span class="help">6 varaq · Excel</span>
+  </div>
+  <p class="help">
+    Inventar qoldiqlari, jurnal, hodisalar, xodimlar, jihozlar va audit — bitta
+    <code>.xlsx</code> faylda, har biri alohida varaqda. Hisobotni biriktirish uchun eng qulay variant.
+  </p>
+  <div class="btn-row">
+    <a class="btn primary"
+       href="/downloads/all.xlsx{% if start or end %}?start={{ start }}&end={{ end }}{% endif %}">
+      Hammasini Excel’da yuklab olish
+    </a>
+    <a class="btn small ghost" href="/downloads/events.csv{% if start or end %}?start={{ start }}&end={{ end }}{% endif %}">
+      Faqat hodisalar (CSV)
+    </a>
+  </div>
+</div>
+
+<div class="grid cols-3">
+  {% for item in datasets %}
+  <div class="card">
+    <div class="card-head">
+      <h2 style="font-size:15px">{{ item.title }}</h2>
+      <div class="spacer"></div>
+      <span class="badge {{ 'muted' if not counts.get(item.key) else 'info' }}">
+        {{ counts.get(item.key, 0) }} qator
+      </span>
+    </div>
+    <p class="help" style="min-height:38px">{{ item.description }}</p>
+    {% if item.date_filtered and range_active %}
+    <div class="help">Davr bo‘yicha filtrlanadi.</div>
+    {% endif %}
+    <div class="btn-row" style="margin-top:8px">
+      <a class="btn small primary"
+         href="/downloads/{{ item.key }}.xlsx{% if start or end %}?start={{ start }}&end={{ end }}{% endif %}">
+        Excel (.xlsx)
+      </a>
+      <a class="btn small ghost"
+         href="/downloads/{{ item.key }}.csv{% if start or end %}?start={{ start }}&end={{ end }}{% endif %}">
+        CSV
+      </a>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>Fayllar haqida</h2></div>
+  <ul class="list">
+    <li>
+      <span class="small">Excel faylda sarlavha qatori qotirilgan (freeze), avtofiltr yoqilgan va ustun
+        kengliklari moslangan — qo‘shimcha ishlov kerak emas.</span>
+      <span class="when mono">XLSX</span>
+    </li>
+    <li>
+      <span class="small">CSV UTF-8 (BOM bilan) — Excel’da o‘zbekcha harflar to‘g‘ri ko‘rinadi.</span>
+      <span class="when mono">CSV</span>
+    </li>
+    <li>
+      <span class="small">Bitta faylda ko‘pi bilan 20 000 qator chiqadi; kattaroq tarix uchun davrni
+        qisqartiring (sana filtri).</span>
+      <span class="when mono">LIMIT</span>
+    </li>
+    <li>
+      <span class="small">Dalil rasmlari faylga qo‘shilmaydi — ustunda faqat nisbiy yo‘l ko‘rsatiladi
+        (rasmni hodisalar sahifasida ochish mumkin).</span>
+      <span class="when mono">EVIDENCE</span>
+    </li>
+    {% if not is_admin %}
+    <li>
+      <span class="small">Audit jurnalini faqat administrator yuklab oladi.</span>
+      <span class="when mono">ROL</span>
+    </li>
+    {% endif %}
+  </ul>
+</div>
+{% endblock %}

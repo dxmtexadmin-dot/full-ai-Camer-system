@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% block title %}Namuna rasmlar{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-head">
+    <h2>Namuna rasmlar (modelni o‘qitish)</h2>
+    <span class="badge outline">faqat admin</span>
+    <div class="spacer"></div>
+    <a class="btn small ghost" href="/api/training/samples.zip">Hammasini ZIP qilib yuklash</a>
+  </div>
+  <div class="help">
+    Umumiy <span class="mono">yolov8s</span> modeli ofis jihozlarini bilmaydi — shuning uchun qo‘ldagi
+    oq <strong>maus</strong> ba’zan <strong>telefon</strong> bo‘lib yoziladi. Yagona ishonchli yechim:
+    modelga shu xonadagi haqiqiy kadrlarni ko‘rsatish. Har bir toifa uchun
+    <strong>{{ target }} ta</strong> rasm yig‘ing (kamida {{ minimum }} ta) — turli burchak, yorug‘lik va
+    holatda: qo‘lda, stol ustida, yon tomondan, yaqindan.
+  </div>
+</div>
+
+<div class="grid cols-4" style="margin-bottom:16px">
+  <div class="kpi">
+    <div class="kpi-label">Jami namunalar</div>
+    <div class="kpi-value">{{ totals.files }}</div>
+    <div class="kpi-hint">{{ totals.started }} ta toifada rasm bor</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Tayyor toifalar</div>
+    <div class="kpi-value">{{ totals.ready }} / {{ totals.categories }}</div>
+    <div class="kpi-hint">kamida {{ totals.minimum }} rasm yig‘ilgan</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Maqsad</div>
+    <div class="kpi-value">{{ totals.target }} ta</div>
+    <div class="kpi-hint">har bir toifa uchun</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Papka</div>
+    <div class="kpi-value" style="font-size:14px">{{ samples_dir }}</div>
+    <div class="kpi-hint">har toifa alohida jildda</div>
+  </div>
+</div>
+
+<div class="split" style="align-items:flex-start">
+  <div class="card" style="flex:1 1 420px;min-width:320px">
+    <div class="card-head"><h2>Toifalar</h2></div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Toifa</th>
+            <th class="num">Rasmlar</th>
+            <th>Holat</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          <tr {% if selected and row.code == selected.code %}style="background:#eef4ff"{% endif %}>
+            <td>
+              <a href="/training?code={{ row.code }}">{{ row.label_uz }}</a>
+              <div class="small muted mono">{{ row.code }}</div>
+            </td>
+            <td class="num mono">{{ row.count }}</td>
+            <td>
+              {% if row.ready %}
+              <span class="badge ok">tayyor</span>
+              {% elif row.count %}
+              <span class="badge warn">{{ row.missing }} ta kerak</span>
+              {% else %}
+              <span class="badge outline">bo‘sh</span>
+              {% endif %}
+              <div class="small muted">{{ row.percent }}%</div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card" style="flex:1 1 460px;min-width:320px">
+    {% if selected %}
+    <div class="card-head">
+      <h2>{{ selected.label_uz }}</h2>
+      <span class="badge outline mono">{{ selected.code }}</span>
+      <div class="spacer"></div>
+      <a class="btn small ghost" href="/api/training/samples.zip?code={{ selected.code }}">ZIP</a>
+    </div>
+
+    <form method="post" action="/api/training/{{ selected.code }}/samples" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="field">
+        <label for="samples-{{ selected.code }}">Rasm(lar) qo‘shish</label>
+        <input id="samples-{{ selected.code }}" type="file" name="files" accept="image/*" multiple required>
+        <div class="help">
+          Bir vaqtda bir nechta rasm tanlash mumkin (JPG/PNG/WEBP, har biri 8 MB gacha).
+          Har bir rasm toifadagi obyektni aniq ko‘rsatsin.
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn primary" type="submit">Yuklash</button>
+      </div>
+    </form>
+
+    <form method="post" action="/api/training/{{ selected.code }}/capture" style="margin-top:10px">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="field-row">
+        <div class="field">
+          <label for="capture-camera">Kameradan kadr olish</label>
+          <select id="capture-camera" name="camera">
+            {% for camera in cameras %}
+            <option value="{{ camera.code }}">{{ camera.code }} — {{ camera.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field" style="flex:0 0 auto;align-self:flex-end">
+          <button class="btn ghost" type="submit" {% if not cameras %}disabled{% endif %}>Kadrni saqlash</button>
+        </div>
+      </div>
+      <div class="help">
+        Kameraning o‘zidan olingan kadr eng foydali namuna: linza, burchak va yorug‘lik bir xil bo‘ladi.
+        Jihozni qo‘lga olib, kadr markaziga tuting va tugmani bosing.
+      </div>
+    </form>
+
+    <div class="card-head" style="margin-top:18px">
+      <h3>Yig‘ilgan namunalar ({{ samples | length }})</h3>
+      <div class="spacer"></div>
+      {% if selected.count >= target %}
+      <span class="badge ok">o‘qitishga tayyor</span>
+      {% elif selected.count >= minimum %}
+      <span class="badge warn">minimal yetdi</span>
+      {% endif %}
+    </div>
+
+    {% if samples %}
+    <div class="grid cols-4" style="gap:10px">
+      {% for sample in samples %}
+      <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;background:#fff">
+        <a href="/api/training/{{ selected.code }}/samples/{{ sample.name }}" target="_blank">
+          <img src="/api/training/{{ selected.code }}/samples/{{ sample.name }}" alt="{{ sample.name }}"
+               loading="lazy" style="width:100%;height:110px;object-fit:cover;display:block">
+        </a>
+        <div style="padding:6px 8px">
+          <div class="small mono">{{ sample.name }}</div>
+          <div class="small muted">{{ sample.size }} · {{ sample.modified }}</div>
+          <form method="post" action="/api/training/{{ selected.code }}/samples/{{ sample.name }}/delete"
+                data-confirm="Bu namuna o‘chirilsinmi?">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="btn small ghost danger" type="submit">O‘chirish</button>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="help">
+      Hozircha rasm yo‘q. Yuqoridan yuklang yoki kameradan kadr oling.
+      Masalan «maus» uchun: stol ustidagi maus, qo‘ldagi maus, yon tomondan, klaviatura yonida —
+      jami {{ target }} ta.
+    </div>
+    {% endif %}
+
+    {% if selected.count >= minimum %}
+    <div class="card-head" style="margin-top:18px"><h3>Keyingi qadam — o‘qitish</h3></div>
+    <div class="help">
+      Namunalar tayyor. Endi ularni belgilash (bounding box) va modelni o‘qitish kerak:
+      <span class="mono">python scripts\train_yolo.py --init dataset</span> →
+      <span class="mono">python scripts\train_yolo.py --import-samples dataset</span> →
+      <strong>qutilarni avtomatik chizish</strong>:
+      <span class="mono">python scripts\autolabel_dataset.py --dataset dataset</span>
+      (natija: <span class="mono">dataset\preview\train</span> — rasmlarni ochib tekshiring) →
+      LabelImg/CVAT bilan xatolarni tuzatish →
+      <span class="mono">python scripts\train_yolo.py --split-val 0.2</span> →
+      <span class="mono">python scripts\train_yolo.py --check dataset\data.yaml</span> →
+      <span class="mono">python scripts\train_yolo.py --data dataset\data.yaml --run --epochs 40 --device cpu</span>.
+      Batafsil: <span class="mono">docs\yolo_training.md</span> va qo‘llanmaning 11.2-bandi.
+    </div>
+    {% endif %}
+    {% else %}
+    <div class="help">Toifalar topilmadi. Avval <a href="/equipment">Jihozlar</a> bo‘limida toifa qo‘shing.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

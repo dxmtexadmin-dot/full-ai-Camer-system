@@ -1,0 +1,42 @@
+# Environment
+.env
+.env.*
+!.env.example
+
+# Virtual environment
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Local data (contains biometric data and evidence stills - never commit)
+data/
+!data/.gitkeep
+
+# Secrets and credentials
+secrets/
+*.json
+!config/*.example.json
+service_account*.json
+google_credentials*.json
+
+# Models (large binary weights)
+*.pt
+*.onnx
+*.pth
+
+# YOLO training material (camera frames + label files + run outputs)
+dataset/
+runs/
+
+# Logs
+logs/
+*.log
+
+# OS / editor
+Thumbs.db
+.DS_Store
+.idea/
+.vscode/

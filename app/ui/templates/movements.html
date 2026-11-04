@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% block title %}Kirim-chiqim{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-head">
+    <h2>Hodisalar tarixi</h2>
+    <span class="badge outline">{{ total }}</span>
+    <div class="spacer"></div>
+    <a class="btn small" href="/reports?{{ request.url.query }}">Hisobotga o‘tish</a>
+  </div>
+
+  <form method="get" action="/movements" class="filters" style="margin-bottom:14px">
+    <div class="field">
+      <label>Boshlanish</label>
+      <input type="date" name="start" value="{{ filters.get('start', '') }}">
+    </div>
+    <div class="field">
+      <label>Tugash</label>
+      <input type="date" name="end" value="{{ filters.get('end', '') }}">
+    </div>
+    <div class="field">
+      <label>Kamera</label>
+      <select name="camera">
+        <option value="">Barchasi</option>
+        {% for code in cameras %}
+        <option value="{{ code }}" {{ 'selected' if filters.get('camera') == code else '' }}>{{ code }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label>Hodisa turi</label>
+      <select name="type">
+        <option value="">Barchasi</option>
+        {% for item in event_types %}
+        <option value="{{ item.value }}" {{ 'selected' if filters.get('type') == item.value else '' }}>{{ item.label_uz }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label>Toifa</label>
+      <select name="category">
+        <option value="">Barchasi</option>
+        {% for item in categories %}
+        <option value="{{ item.code }}" {{ 'selected' if filters.get('category') == item.code else '' }}>{{ item.label_uz }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label>Holat</label>
+      <select name="status">
+        <option value="">Barchasi</option>
+        {% for item in statuses %}
+        <option value="{{ item.value }}" {{ 'selected' if filters.get('status') == item.value else '' }}>{{ item.label_uz }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label>Xodim</label>
+      <select name="employee_id">
+        <option value="">Barchasi</option>
+        {% for item in employees %}
+        <option value="{{ item.id }}" {{ 'selected' if filters.get('employee_id') == item.id | string else '' }}>
+          {{ item.employee_code }} — {{ item.full_name }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label>Qidiruv</label>
+      <input type="search" name="q" value="{{ filters.get('q', '') }}" placeholder="Event ID yoki izoh">
+    </div>
+    <button class="btn primary" type="submit">Filtrlash</button>
+    <a class="btn ghost" href="/movements">Tozalash</a>
+  </form>
+
+  {% if events %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Vaqt</th>
+          <th>Hodisa</th>
+          <th>Kamera</th>
+          <th>Xodim</th>
+          <th>Jihoz</th>
+          <th>Yo‘nalish</th>
+          <th class="num">Aniqlik</th>
+          <th>Holat</th>
+          <th>Dalil</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for event in events %}
+        <tr>
+          <td class="small nowrap">
+            {{ event.occurred_at | local_dt }}
+            <div class="mono muted">{{ event.public_id }}</div>
+          </td>
+          <td>
+            <span class="badge {{ 'warn' if 'UNKNOWN' in event.event_type else ('info' if 'EQUIPMENT' in event.event_type else ('bad' if 'CAMERA' in event.event_type else 'muted')) }}">
+              {{ event.type_label_uz }}
+            </span>
+          </td>
+          <td class="small mono">{{ event.camera_code or '—' }}</td>
+          <td class="small">
+            {{ event.employee_label }}
+            {% if event.employee %}<div class="mono muted">{{ event.employee.employee_code }}</div>{% endif %}
+          </td>
+          <td class="small">
+            {% if event.equipment_category %}{{ event.equipment_category }}{% else %}—{% endif %}
+            {% if event.asset %}<div class="mono muted">{{ event.asset.asset_code }}</div>{% endif %}
+            {% if event.extra and event.extra.get('held_seconds') %}
+            <div class="mono muted">qo‘lda {{ event.extra.get('held_seconds') | round(0) | int }} s</div>
+            {% endif %}
+          </td>
+          <td class="small">
+            {% if event.direction != 'NONE' %}
+            <span class="badge {{ 'ok' if event.direction == 'IN' else 'warn' }}">{{ event.direction_label_uz }}</span>
+            {% else %}—{% endif %}
+          </td>
+          <td class="num mono small">
+            {% if event.association_confidence is not none %}
+            {{ event.association_confidence | score }}
+            {% elif event.face_match_score is not none %}
+            {{ event.face_match_score | score }}
+            {% elif event.detection_confidence is not none %}
+            {{ event.detection_confidence | score }}
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            {% set st = event.verification_status %}
+            <span class="badge {{ 'ok' if st == 'CONFIRMED' else ('warn' if st == 'PENDING' else ('bad' if st == 'REJECTED' else 'info')) }}">
+              {{ event.status_label_uz }}
+            </span>
+          </td>
+          <td class="small">
+            {% if event.evidence_path %}
+            <a href="/api/events/{{ event.public_id }}/evidence" target="_blank" rel="noopener">Ochish</a>
+            {% else %}<span class="muted">—</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if pages > 1 %}
+  <div class="btn-row" style="margin-top:14px;justify-content:center">
+    {% if page > 1 %}
+    <a class="btn small" href="{{ request.url.include_query_params(page=page - 1) }}">← Oldingi</a>
+    {% endif %}
+    {% for p in range(1, pages + 1) %}
+      {% if p == 1 or p == pages or (p >= page - 2 and p <= page + 2) %}
+      <a class="btn small {{ 'primary' if p == page else '' }}" href="{{ request.url.include_query_params(page=p) }}">{{ p }}</a>
+      {% elif p == page - 3 or p == page + 3 %}
+      <span class="muted">…</span>
+      {% endif %}
+    {% endfor %}
+    {% if page < pages %}
+    <a class="btn small" href="{{ request.url.include_query_params(page=page + 1) }}">Keyingi →</a>
+    {% endif %}
+  </div>
+  <div class="help" style="text-align:center;margin-top:6px">
+    {{ (page - 1) * per_page + 1 }}–{{ [page * per_page, total] | min }} / {{ total }}
+  </div>
+  {% endif %}
+
+  {% else %}
+  <div class="empty">Tanlangan shartlarga mos hodisa topilmadi.</div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}Ma’lumotlarni tozalash{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-head">
+    <h2>Ma’lumotlarni tozalash</h2>
+    <span class="badge outline">faqat admin</span>
+    <div class="spacer"></div>
+    <span class="help">Inventar jurnali (qoldiq) hech qachon o‘chirilmaydi — faqat kuzatuv yozuvlari va rasmlar.</span>
+  </div>
+  <div class="help">
+    Bu sahifa keraksiz dalil rasmlarini va noto‘g‘ri (masalan kamerani adashtirib yaratilgan) hodisalarni
+    tozalash uchun. Har bir amal <strong>audit jurnaliga</strong> yoziladi.
+    <strong>Tasdiqlangan</strong> hodisalar va inventar jurnaliga bog‘langan yozuvlar himoyalangan.
+  </div>
+</div>
+
+<div class="grid cols-4" style="margin-bottom:16px">
+  <div class="kpi">
+    <div class="kpi-label">Hodisalar</div>
+    <div class="kpi-value">{{ stats.events_total }}</div>
+    <div class="kpi-hint">
+      Kutilmoqda: {{ stats.by_status.get('PENDING', 0) }} · Rad: {{ stats.by_status.get('REJECTED', 0) }}
+      · Tasdiq: {{ stats.by_status.get('CONFIRMED', 0) }}
+    </div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Dalil rasmlari</div>
+    <div class="kpi-value">{{ stats.evidence_files }}</div>
+    <div class="kpi-hint">{{ stats_human.evidence }} · egasiz: {{ stats.orphan_files }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Baza fayli</div>
+    <div class="kpi-value">{{ stats_human.db }}</div>
+    <div class="kpi-hint">SQLite</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Avtomatik tozalash</div>
+    <div class="kpi-value">{{ stats.retention_days }} kun</div>
+    <div class="kpi-hint">EVIDENCE_RETENTION_DAYS</div>
+  </div>
+</div>
+
+<div class="split" style="align-items:flex-start">
+  <div class="card" style="flex:1 1 420px;min-width:300px">
+    <div class="card-head"><h2>Eski dalil rasmlari</h2></div>
+    <form method="post" action="/api/data/evidence/purge"
+          data-confirm="Belgilangan kundan eski barcha dalil rasmlari o‘chiriladi. Davom etilsinmi?">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="field">
+        <label for="evidence-days">Necha kundan eski</label>
+        <input id="evidence-days" type="number" name="days" min="1" max="3650" value="30">
+      </div>
+      <div class="field">
+        <label for="evidence-confirm">Tasdiqlash so‘zi</label>
+        <input id="evidence-confirm" type="text" name="confirm" autocomplete="off"
+               placeholder="{{ confirm_word }}">
+        <div class="help">Davom etish uchun <strong>{{ confirm_word }}</strong> deb yozing.</div>
+      </div>
+      <div class="btn-row">
+        <button class="btn danger" type="submit">Rasmlarni o‘chirish</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card" style="flex:1 1 420px;min-width:300px">
+    <div class="card-head"><h2>Egasiz rasmlar</h2></div>
+    <div class="help">
+      Bazada hodisasi yo‘q, lekin diskda qolib ketgan JPEG fayllar:
+      <strong>{{ stats.orphan_files }}</strong> ta. Ular faqat joy egallaydi.
+    </div>
+    <form method="post" action="/api/data/evidence/orphans"
+          data-confirm="Egasiz barcha rasmlar o‘chiriladi. Davom etilsinmi?">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="field">
+        <label for="orphan-confirm">Tasdiqlash so‘zi</label>
+        <input id="orphan-confirm" type="text" name="confirm" autocomplete="off"
+               placeholder="{{ confirm_word }}">
+      </div>
+      <div class="btn-row">
+        <button class="btn danger" type="submit">Egasiz rasmlarni o‘chirish</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>Keraksiz hodisalarni o‘chirish</h2>
+    <span class="badge outline">ommaviy</span>
+  </div>
+  <div class="help">
+    Masalan kamera uzilish yozuvlari yoki noto‘g‘ri aniqlangan (rad etilgan) hodisalar.
+    Tasdiqlangan hodisalar va jurnalga bog‘langan yozuvlar o‘chirilmaydi — ular hisobga olinmaydi.
+  </div>
+  <form method="post" action="/api/data/events/purge"
+        data-confirm="Tanlangan hodisalar butunlay o‘chiriladi. Davom etilsinmi?">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="field-row">
+      <div class="field">
+        <label for="purge-group">Hodisa turi</label>
+        <select id="purge-group" name="group">
+          {% for key, label in purge_groups %}
+          <option value="{{ key }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="purge-status">Holat</label>
+        <select id="purge-status" name="status">
+          {% for status in statuses %}
+          <option value="{{ status.value }}">{{ status.label_uz }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="purge-days">Necha kundan eski</label>
+        <input id="purge-days" type="number" name="days" min="1" max="3650" value="7">
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="purge-reason">Sabab (ixtiyoriy)</label>
+        <input id="purge-reason" type="text" name="reason" maxlength="200"
+               placeholder="masalan: kamera tarmoq uzilishi">
+      </div>
+      <div class="field">
+        <label for="purge-confirm">Tasdiqlash so‘zi</label>
+        <input id="purge-confirm" type="text" name="confirm" autocomplete="off"
+               placeholder="{{ confirm_word }}">
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn danger" type="submit">Tanlanganlarni o‘chirish</button>
+    </div>
+    <div class="help">
+      Har bir hodisaning dalil rasmi ham o‘chiriladi. Amalni qaytarib bo‘lmaydi.
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>Bitta hodisani o‘chirish</h2></div>
+  <div class="help">
+    Bitta yozuvni o‘chirish uchun <a href="/review">Tekshirish kerak</a> sahifasidagi
+    «Hodisani o‘chirish» tugmasidan foydalaning (u yerda dalil rasmi ham ko‘rinadi).
+    Dalil fayllari saqlanadigan papka: <span class="mono">{{ stats.evidence_dir }}</span>
+  </div>
+</div>
+{% endblock %}

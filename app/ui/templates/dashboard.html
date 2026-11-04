@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+{% block title %}Bosh sahifa{% endblock %}
+
+{% block content %}
+<div class="grid cols-4" style="margin-bottom:16px">
+  <div class="kpi">
+    <div class="kpi-label">Bugungi kirish</div>
+    <div class="kpi-value">{{ stats.entries }}</div>
+    <div class="kpi-hint">Chiqish: {{ stats.exits }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Noma’lum shaxs</div>
+    <div class="kpi-value {{ 'warn' if stats.unknown_persons else '' }}">{{ stats.unknown_persons }}</div>
+    <div class="kpi-hint">Bugun aniqlangan</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Jihoz harakati</div>
+    <div class="kpi-value">{{ stats.equipment_in }} / {{ stats.equipment_out }}</div>
+    <div class="kpi-hint">Kirdi / chiqdi</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Tekshirish kerak</div>
+    <div class="kpi-value {{ 'bad' if pending_total else 'ok' }}">{{ pending_total }}</div>
+    <div class="kpi-hint">Tasdiqlanmagan hodisalar</div>
+  </div>
+</div>
+
+<div class="split" style="align-items:stretch">
+  <div style="flex:1 1 560px;min-width:320px">
+    <div class="card">
+      <div class="card-head">
+        <h2>Kameralar</h2>
+        <span class="badge {{ 'ok' if online_cameras == total_cameras and total_cameras else ('warn' if online_cameras else 'bad') }}">
+          {{ online_cameras }}/{{ total_cameras }} onlayn
+        </span>
+        <div class="spacer"></div>
+        <a class="btn small" href="/live">Jonli ko‘rinish</a>
+        {% if is_admin %}<a class="btn small" href="/cameras">Sozlash</a>{% endif %}
+      </div>
+
+      {% if cameras %}
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Kamera</th>
+              <th>Holat</th>
+              <th class="num">Kadr</th>
+              <th>Oxirgi kadr</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in cameras %}
+            <tr>
+              <td>
+                <a href="/live?camera={{ row.camera.code }}">{{ row.camera.code }}</a>
+                <div class="small muted">{{ row.camera.name }}{% if row.camera.location %} · {{ row.camera.location }}{% endif %}</div>
+              </td>
+              <td>
+                {% set st = row.status.value %}
+                <span class="badge {{ 'ok' if st == 'ONLINE' else ('bad' if st in ['OFFLINE', 'ERROR'] else ('info' if st == 'CONNECTING' else 'muted')) }}">
+                  {{ row.status.label_uz }}
+                </span>
+                {% if not row.running and row.camera.is_enabled %}
+                <div class="small muted">Worker ishlamayapti</div>
+                {% endif %}
+              </td>
+              <td class="num mono">{{ row.frames }}</td>
+              <td class="small muted">{{ row.last_frame | local_short }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="empty">
+        Kamera qo‘shilmagan.
+        {% if is_admin %}<a href="/cameras">Kamera qo‘shish</a>{% endif %}
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>Inventar ogohlantirishlari</h2>
+        <div class="spacer"></div>
+        <a class="btn small" href="/inventory">Batafsil</a>
+      </div>
+      {% if issues %}
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Toifa</th>
+              <th class="num">Kutilgan</th>
+              <th class="num">Kutilayotgan chiqim</th>
+              <th class="num">Farq</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in issues %}
+            <tr>
+              <td>{{ item.label_uz }} <span class="small muted">{{ item.category_code }}</span></td>
+              <td class="num">{{ item.expected }}</td>
+              <td class="num">{{ item.pending_out }}</td>
+              <td class="num">
+                {% if item.discrepancy %}
+                <span class="badge {{ 'bad' if item.discrepancy > 0 else 'warn' }}">{{ item.discrepancy }}</span>
+                {% else %}—{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="empty">Farqlar yo‘q. Barcha toifalar mos holatda.</div>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>Hozir qo‘lda</h2>
+        <div class="spacer"></div>
+        <a class="btn small" href="/reports">Hodisalar</a>
+      </div>
+      {% if holdings %}
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Jihoz</th>
+              <th>Xodim</th>
+              <th>Kamera</th>
+              <th>Olindi</th>
+              <th class="num">Qo‘lda</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in holdings %}
+            <tr>
+              <td class="small">{{ item.category }}</td>
+              <td class="small">{{ item.employee_name or 'Noma’lum shaxs' }}</td>
+              <td class="small mono">{{ item.camera }}</td>
+              <td class="small nowrap">{{ item.since | local_dt }}</td>
+              <td class="num mono small">{{ item.held_seconds | round(0) | int }} s</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="empty">
+        Hozircha hech kim jihozni qo‘lida ushlab turmaydi. Jihoz olinganda shu yerda
+        xodim bilan birga ko‘rinadi va qo‘yilguncha saqlanadi.
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div style="flex:1 1 340px;min-width:300px">
+    <div class="card">
+      <div class="card-head"><h2>Tizim holati</h2></div>
+      <div class="stat-line">
+        <span>Monitoring</span>
+        <span class="badge {{ 'ok' if monitor_started else 'bad' }}">{{ 'Ishlayapti' if monitor_started else 'To‘xtagan' }}</span>
+      </div>
+      <div class="stat-line">
+        <span>YOLO detektori</span>
+        <span class="badge {{ 'ok' if yolo.available else 'bad' }}">{{ 'Tayyor' if yolo.available else 'Mavjud emas' }}</span>
+      </div>
+      {% if not yolo.available and yolo.reason %}
+      <div class="help" style="margin-top:6px">{{ yolo.reason | truncate(160) }}</div>
+      {% endif %}
+      <div class="stat-line">
+        <span>Yuz galereyasi</span>
+        <span class="badge {{ 'ok' if face.gallery_embeddings else 'warn' }}">{{ face.gallery_embeddings }} shablon</span>
+      </div>
+      <div class="stat-line">
+        <span>InsightFace</span>
+        <span class="badge {{ 'ok' if face.available else 'warn' }}">{{ 'Tayyor' if face.available else 'Yuklanmagan' }}</span>
+      </div>
+      <div class="stat-line">
+        <span>Google Sheets</span>
+        <span class="badge {{ 'ok' if sheets.configured else 'muted' }}">
+          {{ 'Ulangan' if sheets.configured else ('O‘chiq' if not sheets.enabled else 'Sozlanmagan') }}
+        </span>
+      </div>
+      <div class="stat-line">
+        <span>Sinkronizatsiya navbati</span>
+        <span class="badge {{ 'warn' if pending_sync else 'muted' }}">{{ pending_sync }}</span>
+      </div>
+      <div class="stat-line">
+        <span>Faol xodimlar</span>
+        <span>{{ employees }}</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>Oxirgi hodisalar</h2>
+        <div class="spacer"></div>
+        <a class="btn small" href="/movements">Barchasi</a>
+      </div>
+      {% if recent_events %}
+      <ul class="list">
+        {% for event in recent_events %}
+        <li>
+          <span class="badge {{ 'warn' if 'UNKNOWN' in event.event_type else ('info' if 'EQUIPMENT' in event.event_type else 'muted') }}">
+            {{ event.type_label_uz }}
+          </span>
+          <span>
+            {{ event.employee_label }}
+            {% if event.equipment_category %}<span class="muted">· {{ event.equipment_category }}</span>{% endif %}
+          </span>
+          <span class="when">{{ event.occurred_at | local_dt }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <div class="empty">Hozircha hodisa yo‘q.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
