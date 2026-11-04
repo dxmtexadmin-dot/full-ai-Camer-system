@@ -1,20 +1,49 @@
 # Core application dependencies (required).
-# Verified with Python 3.11 on Windows 10/11.
+# Verified environment: Python 3.11.9 on Windows 11 22H2, CPU only.
+#
+#   python -m venv .venv
+#   .venv\Scripts\python.exe -m pip install -r requirements.txt
+#
+# The dashboard, inventory, review and export screens run on this file alone.
+# Real camera inference (YOLO + InsightFace) additionally needs requirements-ai.txt.
+#
+# Every pin below matches the version that is actually installed and tested here,
+# so "pip install -r requirements.txt" does not downgrade a working environment.
+
+# Web application (starlette and MarkupSafe are imported directly by the code,
+# so they are pinned instead of being left to fastapi/Jinja2 resolution)
 fastapi==0.115.14
+starlette==0.46.2
 uvicorn[standard]==0.32.1
-SQLAlchemy==2.0.55
 Jinja2==3.1.6
-python-dotenv==1.0.1
+MarkupSafe==3.0.4
+itsdangerous==2.2.0
 python-multipart==0.0.32
-numpy>=1.26,<2.3
+
+# Persistence
+SQLAlchemy==2.0.55
+
+# Imaging and numerics
+numpy==2.2.6
 opencv-python==4.10.0.84
 Pillow==10.4.0
+
+# Configuration and timezone data (Windows zoneinfo)
+python-dotenv==1.0.1
+tzdata==2024.2
+
+# Google Sheets sync (stays disabled until credentials are configured)
 gspread==6.1.4
 google-auth==2.35.0
+
+# Excel export
 openpyxl==3.1.5
-itsdangerous==2.2.0
-tzdata==2024.2
+
+# Helper scripts: scripts/build_manual.py, scripts/autolabel_dataset.py,
+# scripts/train_yolo.py, scripts/import_public_dataset.py
+python-docx==1.2.0
+PyYAML==6.0.3
 
 # Development / testing
 pytest==8.4.2
-httpx==0.27.2
+httpx==0.28.1

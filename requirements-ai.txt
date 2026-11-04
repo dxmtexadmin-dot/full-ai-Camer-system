@@ -1,24 +1,40 @@
-# Optional AI inference dependencies.
+# Optional AI inference dependencies (YOLO detection + InsightFace recognition).
 # These are NOT required to run the application shell (dashboard, inventory, review).
-# They are required for real camera inference (YOLO detection + InsightFace recognition).
+# They are required for real camera inference.
 #
+# Install order on a clean machine (CPU only):
+#   .venv\Scripts\python.exe -m pip install -r requirements.txt
+#   .venv\Scripts\python.exe -m pip install torch==2.14.1 torchvision==0.29.1 --index-url https://download.pytorch.org/whl/cpu
 #   .venv\Scripts\python.exe -m pip install -r requirements-ai.txt
 #
 # Notes (Windows):
-#  * ultralytics pulls in torch. CPU wheels are ~250 MB.
+#  * torch and torchvision are pinned below. On a CPU-only host install them from
+#    the CPU index first (command above); otherwise pip pulls the ~2.5 GB CUDA
+#    build from PyPI, which this machine cannot use.
+#  * ultralytics needs the 'lap' module for ByteTrack. lapx provides it. Without
+#    lapx ultralytics tries to pip-install it at runtime on every frame - which
+#    installs into whatever pip is on PATH, not into this virtualenv.
 #  * insightface 0.7.x is source-only on PyPI and needs a C++ build toolchain
 #    (Visual Studio Build Tools + Cython). insightface 2.1 ships a pure-Python
 #    wheel with the same FaceAnalysis API, so no compiler is required.
 #    If it is missing or fails to load, the application still starts and reports
 #    face recognition as "unavailable" instead of pretending it works.
-#  * lapx provides the 'lap' module that ultralytics needs for ByteTrack. Without
-#    it ultralytics tries to pip-install it at runtime on every frame - which
-#    installs into whatever pip is on PATH, not into this virtualenv.
 #  * onnxruntime is the CPU runtime used by InsightFace. Install onnxruntime-gpu instead
 #    for CUDA acceleration.
+#  * Model weights are NOT in this repository (data/models/*.pt is gitignored).
+#    Copy yolo26x.pt (113 MB) and equipment_desk_*.pt into data/models/ before
+#    starting a real camera. YoloService falls back to yolo26x.pt when the
+#    equipment-specific weights are missing.
 
+# Object detection and tracking
 ultralytics==8.4.199
-lapx>=0.5.2
+lapx==0.12.1
+
+# Torch runtime (CPU build - see install order above)
+torch==2.14.1
+torchvision==0.29.1
+
+# Face recognition
 insightface==2.1
 onnxruntime==1.20.1
 onnx==1.17.0
