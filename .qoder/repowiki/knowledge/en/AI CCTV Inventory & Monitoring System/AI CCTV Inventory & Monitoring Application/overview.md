@@ -1,1 +1,0 @@
-FastAPI application that monitors CCTV feeds to track people and equipment, recording events, evidence, and inventory transactions with face recognition and YOLO detection.

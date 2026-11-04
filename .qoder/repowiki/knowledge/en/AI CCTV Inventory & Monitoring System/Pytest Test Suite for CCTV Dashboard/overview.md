@@ -1,1 +1,0 @@
-Pytest suite exercising the FastAPI dashboard, camera workers, event/inventory services, face matching, and Google Sheets integration against an in-memory SQLite database.

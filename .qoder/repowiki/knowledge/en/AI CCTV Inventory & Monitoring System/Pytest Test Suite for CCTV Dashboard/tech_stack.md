@@ -1,1 +1,0 @@
-pytest with FastAPI `TestClient`; SQLAlchemy sessions against an in-memory/temporary SQLite database; NumPy/OpenCV for simulated frames; Google Sheets integration explicitly disabled via `GOOGLE_SHEETS_ENABLED=false`.

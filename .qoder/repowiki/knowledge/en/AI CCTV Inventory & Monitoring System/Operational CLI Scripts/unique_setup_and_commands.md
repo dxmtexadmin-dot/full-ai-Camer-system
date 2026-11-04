@@ -1,1 +1,0 @@
-Scripts expect to be run from the repository root as `python scripts/<script>.py ...`; each script prepends its parent directory to `sys.path` so it can import `app.*`. Training requires `pip install -r requirements-ai.txt` for Ultralytics/PyYAML, and camera testing needs a working RTSP/USB source or simulation mode.
