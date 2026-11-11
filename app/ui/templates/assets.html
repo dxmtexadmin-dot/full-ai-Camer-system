@@ -1,0 +1,241 @@
+{% extends "base.html" %}
+{% block title %}Qurilmalar (QR inventar){% endblock %}
+
+{% block content %}
+<div class="grid cols-4">
+  <div class="kpi">
+    <div class="kpi-label">Jami qurilmalar</div>
+    <div class="kpi-value">{{ stats.assets_total }}</div>
+    <div class="kpi-hint">{{ stats.assets_unassigned }} ta biriktirilmagan</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Xodimlarda</div>
+    <div class="kpi-value ok">{{ stats.assets_assigned }}</div>
+    <div class="kpi-hint">mas'ul xodim biriktirilgan</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Ta'mirda</div>
+    <div class="kpi-value {{ 'warn' if stats.assets_in_repair else '' }}">{{ stats.assets_in_repair }}</div>
+    <div class="kpi-hint">{{ stats.assets_with_technician }} ta texnik biriktirilgan</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Tekshirish kerak</div>
+    <div class="kpi-value {{ 'warn' if stats.pending_asset_events else '' }}">{{ stats.pending_asset_events }}</div>
+    <div class="kpi-hint">kamera kuzatuvi yozuvlari</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>Qurilmalar reyestri</h2>
+    <span class="badge outline">{{ total }}</span>
+    <div class="spacer"></div>
+    <form method="get" action="/assets" class="filters">
+      <div class="field">
+        <input type="search" name="q" value="{{ query }}" placeholder="Kod, nom, model, xodim, xona">
+      </div>
+      <div class="field">
+        <select name="category">
+          <option value="">Barcha turlar</option>
+          {% for item in categories %}
+          <option value="{{ item.code }}" {{ 'selected' if selected_category == item.code else '' }}>{{ item.label_uz }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <select name="status">
+          <option value="">Barcha holatlar</option>
+          {% for item in statuses %}
+          <option value="{{ item.value }}" {{ 'selected' if selected_status == item.value else '' }}>{{ item.label_uz }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <input type="text" name="room" value="{{ room }}" placeholder="Xona">
+      </div>
+      <div class="field">
+        <label class="small"><input type="checkbox" name="unassigned" value="1" {{ 'checked' if unassigned else '' }}> Faqat biriktirilmagan</label>
+      </div>
+      <button class="btn" type="submit">Filtrlash</button>
+    </form>
+  </div>
+
+  {% if assets %}
+  <form id="batch-print" method="get" action="/assets-print"></form>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th><span class="small">Chop</span></th>
+          <th>Inventar raqam</th>
+          <th>Nomi</th>
+          <th>Turi</th>
+          <th>Mas'ul xodim</th>
+          <th>Xona</th>
+          <th>Texnik</th>
+          <th>Holat</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for asset in assets %}
+        <tr>
+          <td><input type="checkbox" form="batch-print" name="asset_ids" value="{{ asset.id }}" aria-label="Chop etish uchun tanlash"></td>
+          <td class="mono"><a href="/assets/{{ asset.id }}">{{ asset.asset_code }}</a></td>
+          <td class="small">{{ asset.display_name }}</td>
+          <td class="small">{{ asset.category.label_uz if asset.category else '—' }}</td>
+          <td class="small">
+            {% if asset.responsible_name %}
+              {{ asset.responsible_name }}
+              {% if asset.responsible_position %}<div class="muted">{{ asset.responsible_position }}</div>{% endif %}
+            {% else %}<span class="muted">—</span>{% endif %}
+          </td>
+          <td class="small">{{ asset.room or asset.location or '—' }}</td>
+          <td class="small">{{ asset.technician_name or '—' }}</td>
+          <td><span class="badge {{ 'ok' if asset.status == 'IN_USE' else ('warn' if asset.status in ['MAINTENANCE', 'LOST'] else 'info') }}">{{ asset.status_label_uz }}</span></td>
+          <td style="white-space:nowrap">
+            <a class="btn small" href="/assets/{{ asset.id }}">Ochish</a>
+            <a class="btn small ghost" href="/assets/{{ asset.id }}/print" target="_blank" rel="noopener">QR chop</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card-head" style="margin-top:14px">
+    <h3>Tanlangan yorliqlarni A4 varaqda chop etish</h3>
+  </div>
+  <div class="filters">
+    <div class="field">
+      <label>Yorliq o'lchami</label>
+      <select form="batch-print" name="size">
+        {% for value, label in sizes %}
+        <option value="{{ value }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label>Chekka (mm)</label>
+      <input form="batch-print" type="number" name="margin" value="10" min="0" max="25" step="1">
+    </div>
+    <div class="field">
+      <label>Oraliq (mm)</label>
+      <input form="batch-print" type="number" name="gap" value="3" min="0" max="20" step="1">
+    </div>
+    <div class="field">
+      <label>Yorliqda ko'rsatish</label>
+      <label class="small"><input form="batch-print" type="checkbox" name="part" value="qr" checked> QR</label>
+      <label class="small"><input form="batch-print" type="checkbox" name="part" value="code" checked> Inventar raqam</label>
+      <label class="small"><input form="batch-print" type="checkbox" name="part" value="name" checked> Nomi</label>
+      <label class="small"><input form="batch-print" type="checkbox" name="part" value="model" checked> Model</label>
+      <label class="small"><input form="batch-print" type="checkbox" name="part" value="org"> Tashkilot</label>
+    </div>
+    <input type="hidden" form="batch-print" name="parts_submitted" value="1">
+    <button class="btn primary" type="submit" form="batch-print">Ko'rish / chop etish</button>
+  </div>
+
+  {% if total > per_page %}
+  <div class="btn-row" style="margin-top:12px">
+    {% if page > 1 %}
+    <a class="btn small ghost" href="/assets?q={{ query }}&category={{ selected_category }}&status={{ selected_status }}&page={{ page - 1 }}">Oldingi</a>
+    {% endif %}
+    <span class="small muted">{{ page }} / {{ ((total - 1) // per_page) + 1 }} sahifa</span>
+    {% if page * per_page < total %}
+    <a class="btn small ghost" href="/assets?q={{ query }}&category={{ selected_category }}&status={{ selected_status }}&page={{ page + 1 }}">Keyingi</a>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% else %}
+  <div class="empty">Qurilma topilmadi. Quyidagi forma orqali qo'shing.</div>
+  {% endif %}
+</div>
+
+{% if can_manage %}
+<div class="card">
+  <div class="card-head"><h2>Yangi qurilma qo'shish</h2></div>
+  <p class="small muted">Saqlangandan so'ng inventar raqam uchun noyob QR kod avtomatik yaratiladi.</p>
+  <form method="post" action="/api/assets" autocomplete="off">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="field-row">
+      <div class="field">
+        <label for="category_code">Qurilma turi *</label>
+        <select id="category_code" name="category_code" required>
+          {% for item in categories %}
+          <option value="{{ item.code }}">{{ item.label_uz }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="asset_code">Inventar raqam</label>
+        <input id="asset_code" type="text" name="asset_code" placeholder="Bo'sh qoldirsangiz avtomatik" maxlength="48">
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="name">Nomi</label>
+        <input id="name" type="text" name="name" maxlength="160" placeholder="Masalan: Bosh ofis monitori">
+      </div>
+      <div class="field">
+        <label for="serial_number">Seriya raqami</label>
+        <input id="serial_number" type="text" name="serial_number" maxlength="120">
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="brand">Ishlab chiqaruvchi</label>
+        <input id="brand" type="text" name="brand" maxlength="80" placeholder="Dell, HP, Lenovo...">
+      </div>
+      <div class="field">
+        <label for="model">Model</label>
+        <input id="model" type="text" name="model" maxlength="120">
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="room">Xona</label>
+        <input id="room" type="text" name="room" maxlength="80" placeholder="101">
+      </div>
+      <div class="field">
+        <label for="department">Bo'lim</label>
+        <input id="department" type="text" name="department" maxlength="120">
+      </div>
+      <div class="field">
+        <label for="purchase_date">Xarid sanasi</label>
+        <input id="purchase_date" type="date" name="purchase_date">
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="responsible_employee_id">Mas'ul xodim</label>
+        <select id="responsible_employee_id" name="responsible_employee_id">
+          <option value="">— tanlanmagan —</option>
+          {% for employee in employees %}
+          <option value="{{ employee.id }}">{{ employee.full_name }} ({{ employee.employee_code }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="responsible_position">Lavozim</label>
+        <input id="responsible_position" type="text" name="responsible_position" maxlength="120">
+      </div>
+      <div class="field">
+        <label for="technician_employee_id">Texnik</label>
+        <select id="technician_employee_id" name="technician_employee_id">
+          <option value="">— tanlanmagan —</option>
+          {% for employee in employees %}
+          <option value="{{ employee.id }}">{{ employee.full_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label for="notes">Izoh</label>
+      <textarea id="notes" name="notes" maxlength="1000"></textarea>
+    </div>
+    <button class="btn primary" type="submit">Saqlash va QR yaratish</button>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

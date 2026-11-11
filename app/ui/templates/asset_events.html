@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Inventar hodisalari{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-head">
+    <h2>Kamera kuzatuvi yozuvlari</h2>
+    <span class="badge outline">{{ movements | length }}</span>
+    {% if movements_total and movements_total != (movements | length) %}
+    <span class="muted small">jami {{ movements_total }} ta yozuv</span>
+    {% endif %}
+    <div class="spacer"></div>
+    <form method="get" action="/assets/events" class="filters">
+      <div class="field">
+        <select name="pending">
+          <option value="yes" {{ 'selected' if pending_only else '' }}>Faqat tekshirish kerak</option>
+          <option value="no" {{ 'selected' if not pending_only else '' }}>Barchasi</option>
+        </select>
+      </div>
+      <button class="btn" type="submit">Filtrlash</button>
+    </form>
+  </div>
+
+  <div class="notice warn">
+    Kamera hech qachon qurilma egasini o'zi o'zgartirmaydi. Noma'lum harakat "Aniq identifikatsiya qilinmagan"
+    sifatida saqlanadi va tasdiqlash uchun administrator/operatorga yuboriladi.
+  </div>
+
+  {% if settings and not settings.asset_monitor_enabled %}
+  <div class="notice">
+    Kamera QR kuzatuvi o'chirilgan (<span class="mono">ASSET_MONITOR_ENABLED=false</span>), shuning uchun kamera
+    yorliqlarni o'qimaydi va bu ro'yxat bo'sh qoladi. Yoqish uchun <span class="mono">.env</span> faylida
+    <span class="mono">ASSET_MONITOR_ENABLED=true</span> qilib, serverni qayta ishga tushiring.
+  </div>
+  {% endif %}
+
+  {% if movements %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Vaqt</th>
+          <th>Kamera</th>
+          <th>Qurilma</th>
+          <th>Hodisa</th>
+          <th>Toifa</th>
+          <th>Ishonch</th>
+          <th>Holat</th>
+          <th>Izoh</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in movements %}
+        <tr>
+          <td class="small">{{ item.occurred_at | local_dt }}</td>
+          <td class="small mono">{{ item.camera_code or '—' }}</td>
+          <td class="small">
+            {% if item.asset_id %}
+            <a class="mono" href="/assets/{{ item.asset_id }}">{{ item.asset_code }}</a>
+            {% else %}
+            <span class="muted">Aniqlanmagan</span>
+            {% endif %}
+          </td>
+          <td class="small">{{ item.movement_label_uz }}</td>
+          <td class="small">{{ item.detected_category or '—' }}</td>
+          <td class="small">{{ item.confidence | score }}</td>
+          <td>
+            <span class="badge {{ 'warn' if item.verification_status == 'PENDING' else ('ok' if item.verification_status == 'CONFIRMED' else 'outline') }}">
+              {{ item.verification_status }}
+            </span>
+          </td>
+          <td class="small">
+            {{ item.notes or '—' }}
+            {% if item.evidence_path %}<div class="muted">dalil rasmi saqlangan</div>{% endif %}
+          </td>
+          <td style="white-space:nowrap">
+            {% if can_review and item.verification_status == 'PENDING' %}
+            <form method="post" action="/api/asset-movements/{{ item.id }}/review" class="inline-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="decision" value="confirm">
+              <button class="btn small primary" type="submit">Tasdiqlash</button>
+            </form>
+            <form method="post" action="/api/asset-movements/{{ item.id }}/review" class="inline-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="decision" value="reject">
+              <button class="btn small ghost" type="submit">Rad etish</button>
+            </form>
+            {% else %}
+            <span class="muted small">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">
+    {% if pending_only and movements_total %}
+    Tasdiqlash kutilayotgan yozuv yo'q — {{ movements_total }} ta yozuv allaqachon ko'rib chiqilgan.
+    {% elif pending_only %}
+    Hozircha tasdiqlash kutilayotgan yozuv yo'q. Kamera qurilma yorlig'ini o'qisa yoki kuzatilayotgan qurilma
+    kamera ko'rinishidan chiqsa, yozuv shu yerda paydo bo'ladi.
+    {% else %}
+    Kuzatuv yozuvlari hali yo'q. Yozuv paydo bo'lishi uchun qurilma yorlig'i chop etilib kamera zonasiga
+    qo'yiladi (QR o'qiladi) yoki kuzatilayotgan qurilma kamera ko'rinishidan chiqadi.
+    {% endif %}
+    <div style="margin-top:10px">
+      <a class="btn small{{ ' primary' if pending_only else '' }}" href="/assets/events?pending={{ 'no' if pending_only else 'yes' }}">
+        {{ 'Barcha yozuvlarni ko‘rish' if pending_only else 'Faqat tekshirish kerak' }}
+      </a>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

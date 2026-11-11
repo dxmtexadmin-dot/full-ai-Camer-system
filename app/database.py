@@ -121,6 +121,18 @@ def init_db(settings: Optional[Settings] = None, *, seed: bool = True) -> Engine
     Base.metadata.create_all(bind=engine)
     logger.info("Database schema ready (%d tables)", len(Base.metadata.tables))
 
+    # A database created by an older release keeps its tables: create_all never
+    # adds columns to an existing table. Upgrade it in place (additive ALTER
+    # TABLE only, backed up and recorded in ``schema_migrations``).
+    try:
+        from app.services.schema_migration import apply_migrations
+
+        applied = apply_migrations(engine, settings)
+        if applied:
+            logger.info("Applied schema migrations: %s", ", ".join(applied))
+    except Exception:  # never prevent the original features from starting
+        logger.exception("Schema migration failed; existing data was left untouched")
+
     if seed:
         from app.services.bootstrap import bootstrap_database
 

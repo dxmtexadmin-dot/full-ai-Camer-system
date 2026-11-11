@@ -1,0 +1,427 @@
+{% extends "base.html" %}
+{% block title %}{{ asset.asset_code }} — {{ asset.display_name }}{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-head">
+    <h2 class="mono">{{ asset.asset_code }}</h2>
+    <span class="badge {{ 'ok' if asset.status == 'IN_USE' else ('warn' if asset.status in ['MAINTENANCE', 'LOST'] else 'info') }}">{{ asset.status_label_uz }}</span>
+    {% if asset.technician_name %}<span class="badge outline">Texnik: {{ asset.technician_name }}</span>{% endif %}
+    <div class="spacer"></div>
+    <a class="btn small ghost" href="/assets">← Reyestr</a>
+  </div>
+  <table>
+    <tbody>
+      <tr><th style="width:220px">Nomi</th><td>{{ asset.display_name }}</td></tr>
+      <tr><th>Turi</th><td>{{ asset.category.label_uz if asset.category else '—' }}</td></tr>
+      <tr><th>Ishlab chiqaruvchi / model</th><td>{{ asset.full_model or '—' }}</td></tr>
+      <tr><th>Seriya raqami</th><td class="mono">{{ asset.serial_number or '—' }}</td></tr>
+      <tr><th>Xona / joylashuv</th><td>{{ asset.room or asset.location or '—' }}</td></tr>
+      <tr><th>Bo'lim</th><td>{{ asset.department or '—' }}</td></tr>
+      <tr><th>Mas'ul xodim</th><td>{{ asset.responsible_name or '—' }}{% if asset.responsible_position %} <span class="muted small">({{ asset.responsible_position }})</span>{% endif %}</td></tr>
+      <tr><th>Texnik</th><td>{{ asset.technician_name or '—' }}</td></tr>
+      <tr><th>Xarid sanasi</th><td>{{ asset.purchase_date or '—' }}</td></tr>
+      <tr><th>Izoh</th><td>{{ asset.notes or '—' }}</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="split">
+  <div style="flex:1 1 320px;min-width:280px">
+    <div class="card">
+      <div class="card-head"><h2>QR kod</h2></div>
+      <div style="text-align:center">
+        <img src="/assets/{{ asset.id }}/label.png?size=30x30" alt="QR {{ asset.asset_code }}"
+             style="width:180px;height:180px;border:1px solid #d8dee8;border-radius:8px;background:#fff">
+        <div class="small muted mono" style="margin-top:6px;word-break:break-all">{{ payload }}</div>
+        <div class="small muted">Chop etilgan: {{ qr.reprint_count }} marta</div>
+      </div>
+      <div class="btn-row" style="justify-content:center">
+        <a class="btn small" href="/assets/{{ asset.id }}/qr.png?download=0" target="_blank" rel="noopener">QR ko'rish</a>
+        <a class="btn small" href="/assets/{{ asset.id }}/qr.png?download=1">QR yuklab olish</a>
+        <a class="btn small primary" href="/assets/{{ asset.id }}/print?size=30x30" target="_blank" rel="noopener">QR chop etish</a>
+      </div>
+
+      <details class="details" style="margin-top:10px">
+        <summary>Boshqa o'lchamda chop etish</summary>
+        <form method="get" action="/assets/{{ asset.id }}/print" target="_blank">
+          <div class="field">
+            <label for="size">Standart o'lcham</label>
+            <select id="size" name="size">
+              {% for value, label in sizes %}
+              <option value="{{ value }}" {{ 'selected' if value == qr.label_size else '' }}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label for="w">Kenglik (mm)</label>
+              <input id="w" type="number" name="w" min="20" max="210" step="1" placeholder="masalan 45">
+            </div>
+            <div class="field">
+              <label for="h">Balandlik (mm)</label>
+              <input id="h" type="number" name="h" min="20" max="210" step="1" placeholder="masalan 35">
+            </div>
+          </div>
+          <div class="field">
+            <label>Yorliqda ko'rsatish</label>
+            <label class="small"><input type="checkbox" name="part" value="qr" checked> QR</label>
+            <label class="small"><input type="checkbox" name="part" value="code" checked> Inventar raqam</label>
+            <label class="small"><input type="checkbox" name="part" value="name" checked> Nomi</label>
+            <label class="small"><input type="checkbox" name="part" value="model" checked> Model</label>
+            <label class="small"><input type="checkbox" name="part" value="resp"> Mas'ul xodim</label>
+            <label class="small"><input type="checkbox" name="part" value="org"> Tashkilot nomi</label>
+          </div>
+          <div class="field">
+            <label for="extra_text">Qo'shimcha matn</label>
+            <input id="extra_text" type="text" name="extra_text" maxlength="120">
+          </div>
+          <input type="hidden" name="parts_submitted" value="1">
+          <button class="btn small primary" type="submit">Ko'rish / chop etish</button>
+        </form>
+      </details>
+
+      {% if can_manage %}
+      <form method="post" action="/api/assets/{{ asset.id }}/qr/reissue" style="margin-top:10px"
+            onsubmit="return confirm('Eski yorliq ishlamay qoladi. Yangi QR yaratilsinmi?')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="btn small danger" type="submit">QR kodni qayta chiqarish</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+
+  <div style="flex:2 1 420px;min-width:320px">
+    {% if can_manage %}
+    <div class="card">
+      <div class="card-head"><h2>Xodimga biriktirish</h2></div>
+      {% if open_assignment %}
+      <div class="stat-line">
+        <span>Hozirgi mas'ul</span>
+        <strong>{{ open_assignment.employee_name }}</strong>
+      </div>
+      <div class="stat-line">
+        <span>Biriktirilgan vaqt</span>
+        <span class="small">{{ open_assignment.assigned_at | local_dt }}</span>
+      </div>
+      <form method="post" action="/api/assets/{{ asset.id }}/release" style="margin-top:8px"
+            onsubmit="return confirm('Biriktirishni yopasizmi? Tarix saqlanadi.')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="field">
+          <label for="release_reason">Sabab</label>
+          <input id="release_reason" type="text" name="reason" maxlength="200" placeholder="Qaytarib olindi, boshqa xodimga o'tkaziladi...">
+        </div>
+        <button class="btn small danger" type="submit">Biriktirishni yopish</button>
+      </form>
+      <hr>
+      {% endif %}
+      <form method="post" action="/api/assets/{{ asset.id }}/assign" autocomplete="off">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="field">
+          <label for="employee_id">Xodim *</label>
+          <select id="employee_id" name="employee_id" required>
+            <option value="">— tanlang —</option>
+            {% for employee in employees %}
+            <option value="{{ employee.id }}">{{ employee.full_name }} ({{ employee.employee_code }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="position">Lavozim</label>
+            <input id="position" type="text" name="position" maxlength="120">
+          </div>
+          <div class="field">
+            <label for="assign_room">Xona</label>
+            <input id="assign_room" type="text" name="room" maxlength="80" value="{{ asset.room }}">
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="assign_department">Bo'lim</label>
+            <input id="assign_department" type="text" name="department" maxlength="120" value="{{ asset.department }}">
+          </div>
+          <div class="field">
+            <label for="assign_notes">Izoh</label>
+            <input id="assign_notes" type="text" name="notes" maxlength="200">
+          </div>
+        </div>
+        <button class="btn primary small" type="submit">Biriktirish / o'tkazish</button>
+      </form>
+    </div>
+    {% endif %}
+
+    <div class="card">
+      <div class="card-head"><h2>Ta'mir va texnik</h2></div>
+      <div class="stat-line">
+        <span>Biriktirilgan texnik</span>
+        <strong>{{ asset.technician_name or '—' }}</strong>
+      </div>
+      {% if open_repair %}
+      <div class="notice warn">
+        Ochiq ta'mir: {{ open_repair.reason }} ({{ open_repair.started_at | local_dt }}, {{ open_repair.technician_name }})
+      </div>
+      {% endif %}
+
+      {% if can_repair %}
+        {% if open_repair %}
+        <form method="post" action="/api/assets/{{ asset.id }}/repair/{{ open_repair.id }}/finish">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <div class="field">
+            <label for="result">Ta'mir natijasi</label>
+            <input id="result" type="text" name="result" maxlength="500" placeholder="Nima qilindi">
+          </div>
+          <button class="btn small primary" type="submit">Ta'mirni yakunlash</button>
+        </form>
+        <form method="post" action="/api/assets/{{ asset.id }}/repair/{{ open_repair.id }}/return" style="margin-top:8px">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <div class="field">
+            <label for="return_note">Qaytarish izohi</label>
+            <input id="return_note" type="text" name="note" maxlength="300">
+          </div>
+          <button class="btn small" type="submit">Qurilmani qaytarish</button>
+        </form>
+        {% else %}
+        <form method="post" action="/api/assets/{{ asset.id }}/repair/start">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <div class="field">
+            <label for="repair_reason">Ta'mir sababi *</label>
+            <input id="repair_reason" type="text" name="reason" maxlength="500" required placeholder="Ekran ishlamayapti">
+          </div>
+          <button class="btn small primary" type="submit">Ta'mirga qabul qilish</button>
+        </form>
+        {% endif %}
+      {% endif %}
+
+      {% if can_manage %}
+      <details class="details" style="margin-top:10px">
+        <summary>Texnikni biriktirish</summary>
+        <form method="post" action="/api/assets/{{ asset.id }}/technician">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <div class="field">
+            <label for="tech_employee">Texnik</label>
+            <select id="tech_employee" name="technician_employee_id">
+              <option value="">— tanlanmagan —</option>
+              {% for employee in employees %}
+              <option value="{{ employee.id }}" {{ 'selected' if asset.technician_employee_id == employee.id else '' }}>{{ employee.full_name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="field">
+            <label for="tech_name">yoki ism (ro'yxatda bo'lmasa)</label>
+            <input id="tech_name" type="text" name="technician_name" maxlength="160">
+          </div>
+          <button class="btn small" type="submit">Texnikni saqlash</button>
+        </form>
+      </details>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>Foydalanuvchilar va harakatlar tarixi</h2><span class="badge outline">{{ timeline | length }}</span></div>
+  <p class="small muted">Yozuvlar o'chirilmaydi. Tuzatish alohida yozuv sifatida qo'shiladi.</p>
+  {% if timeline %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Vaqt</th><th>Turi</th><th>Amal</th><th>Kim</th><th>Izoh</th><th>Holat</th></tr>
+      </thead>
+      <tbody>
+        {% for row in timeline %}
+        <tr>
+          <td class="small">{{ row.at | local_dt }}</td>
+          <td class="small">{{ 'Foydalanish' if row.kind == 'usage' else ('Ta\'mir' if row.kind == 'repair' else 'Kamera') }}</td>
+          <td class="small">
+            {{ row.title }}
+            {% if row.correction %}<span class="badge warn">tuzatish</span>{% endif %}
+          </td>
+          <td class="small">{{ row.employee or row.actor or '—' }}</td>
+          <td class="small">{{ row.detail or '—' }}{% if row.camera %} <span class="muted">({{ row.camera }})</span>{% endif %}</td>
+          <td class="small">{% if row.status %}<span class="badge outline">{{ row.status }}</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">Tarix yozuvlari yo'q.</div>
+  {% endif %}
+</div>
+
+<div class="split">
+  <div style="flex:1 1 380px;min-width:300px">
+    <div class="card">
+      <div class="card-head"><h2>Biriktirish tarixi</h2></div>
+      {% if assignments %}
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Xodim</th><th>Boshlangan</th><th>Tugagan</th><th>Kim</th></tr></thead>
+          <tbody>
+            {% for item in assignments %}
+            <tr>
+              <td class="small">{{ item.employee_name }}{% if item.employee_position %}<div class="muted">{{ item.employee_position }}</div>{% endif %}</td>
+              <td class="small">{{ item.assigned_at | local_dt }}</td>
+              <td class="small">{{ item.ended_at | local_dt if item.ended_at else '— davom etadi —' }}</td>
+              <td class="small">{{ item.assigned_by_username or '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}<div class="empty">Biriktirish yo'q.</div>{% endif %}
+    </div>
+  </div>
+
+  <div style="flex:1 1 380px;min-width:300px">
+    <div class="card">
+      <div class="card-head"><h2>Ta'mir tarixi</h2></div>
+      {% if repairs %}
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Sabab</th><th>Texnik</th><th>Holat</th><th>Boshlangan</th></tr></thead>
+          <tbody>
+            {% for item in repairs %}
+            <tr>
+              <td class="small">{{ item.reason or '—' }}{% if item.result %}<div class="muted">{{ item.result }}</div>{% endif %}</td>
+              <td class="small">{{ item.technician_name or '—' }}</td>
+              <td><span class="badge {{ 'warn' if item.is_open else 'ok' }}">{{ item.status_label_uz }}</span></td>
+              <td class="small">{{ item.started_at | local_dt }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}<div class="empty">Ta'mir yozuvi yo'q.</div>{% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>Kamera kuzatuvi</h2></div>
+  {% if cameras %}
+  <div class="tag-list">
+    {% for link in cameras %}
+    <span class="badge {{ 'ok' if link.is_active else 'outline' }}">{{ link.camera_code }}{% if link.zone %} · {{ link.zone }}{% endif %}</span>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="small muted">Bu qurilma hech qanday kameraga bog'lanmagan.</p>
+  {% endif %}
+  {% if can_manage %}
+  <form method="post" action="/api/assets/{{ asset.id }}/camera" class="filters" style="margin-top:8px">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="field">
+      <input type="text" name="camera_code" maxlength="32" placeholder="Kamera kodi (masalan CAM-101)" required>
+    </div>
+    <div class="field">
+      <input type="text" name="zone" maxlength="120" placeholder="Kuzatuv zonasi">
+    </div>
+    <button class="btn small" type="submit">Kamerani bog'lash</button>
+  </form>
+  {% endif %}
+
+  {% if movements %}
+  <div class="table-wrap" style="margin-top:10px">
+    <table>
+      <thead><tr><th>Vaqt</th><th>Kamera</th><th>Hodisa</th><th>Ishonch</th><th>Holat</th></tr></thead>
+      <tbody>
+        {% for item in movements %}
+        <tr>
+          <td class="small">{{ item.occurred_at | local_dt }}</td>
+          <td class="small mono">{{ item.camera_code or '—' }}</td>
+          <td class="small">{{ item.movement_label_uz }}</td>
+          <td class="small">{{ item.confidence | score }}</td>
+          <td><span class="badge {{ 'warn' if item.verification_status == 'PENDING' else 'ok' }}">{{ item.verification_status }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+{% if can_manage %}
+<div class="card">
+  <div class="card-head"><h2>Ma'lumotlarni tahrirlash</h2></div>
+  <form method="post" action="/api/assets/{{ asset.id }}/update" autocomplete="off">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="field-row">
+      <div class="field">
+        <label for="edit_name">Nomi</label>
+        <input id="edit_name" type="text" name="name" value="{{ asset.name }}" maxlength="160">
+      </div>
+      <div class="field">
+        <label for="edit_serial">Seriya raqami</label>
+        <input id="edit_serial" type="text" name="serial_number" value="{{ asset.serial_number or '' }}" maxlength="120">
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="edit_brand">Ishlab chiqaruvchi</label>
+        <input id="edit_brand" type="text" name="brand" value="{{ asset.brand }}" maxlength="80">
+      </div>
+      <div class="field">
+        <label for="edit_model">Model</label>
+        <input id="edit_model" type="text" name="model" value="{{ asset.model }}" maxlength="120">
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="edit_room">Xona</label>
+        <input id="edit_room" type="text" name="room" value="{{ asset.room }}" maxlength="80">
+      </div>
+      <div class="field">
+        <label for="edit_department">Bo'lim</label>
+        <input id="edit_department" type="text" name="department" value="{{ asset.department }}" maxlength="120">
+      </div>
+      <div class="field">
+        <label for="edit_position">Mas'ul lavozimi</label>
+        <input id="edit_position" type="text" name="responsible_position" value="{{ asset.responsible_position }}" maxlength="120">
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="edit_status">Holat</label>
+        <select id="edit_status" name="status">
+          {% for item in statuses %}
+          <option value="{{ item.value }}" {{ 'selected' if asset.status == item.value else '' }}>{{ item.label_uz }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="edit_purchase">Xarid sanasi</label>
+        <input id="edit_purchase" type="date" name="purchase_date" value="{{ asset.purchase_date or '' }}">
+      </div>
+    </div>
+    <div class="field">
+      <label for="edit_notes">Izoh</label>
+      <textarea id="edit_notes" name="notes" maxlength="2000">{{ asset.notes or '' }}</textarea>
+    </div>
+    <button class="btn primary small" type="submit">Saqlash</button>
+  </form>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-head"><h2>Audit jurnali</h2><span class="badge outline">{{ audit | length }}</span></div>
+  {% if audit %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Vaqt</th><th>Kim</th><th>Amal</th><th>Tafsilot</th></tr></thead>
+      <tbody>
+        {% for item in audit %}
+        <tr>
+          <td class="small">{{ item.occurred_at | local_dt }}</td>
+          <td class="small">{{ item.actor_username }}</td>
+          <td class="small">{{ item.action }}{% if item.is_correction %} <span class="badge warn">tuzatish</span>{% endif %}</td>
+          <td class="small mono">{{ item.details }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}<div class="empty">Audit yozuvi yo'q.</div>{% endif %}
+</div>
+{% endblock %}

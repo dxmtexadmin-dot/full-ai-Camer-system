@@ -1,0 +1,617 @@
+================================================================================
+  DXM TEX ADMINS — XAVFSIZ YANGILASH REJASI (PHASE 0 BASELINE + PHASE 1 DESIGN)
+================================================================================
+
+Sana            : 2026-11-05
+Branch          : feature/qr-inventory-monitoring
+HEAD            : 9c853d5  "Add INSTALL.txt: full clone-to-run guide incl. YOLO and AI stack"
+Teglar          : checkpoint-before-qr-inventory-2026-11-06 -> 9c853d5
+                  checkpoint-before-custom-model-2026-11-05 -> 9c853d5
+Muhit           : Windows 11 22H2, Python 3.12.10 (.venv), CPU inference
+GPU             : NVIDIA GeForce RTX 5070, 12 227 MiB, driver 610.88  (nvidia-smi)
+Testlar         : 325 passed, 1 warning   (oxirgi to'liq yugurish 82.03 s)
+Kod             : 90 .py / 19 367 satr, 23 Jinja shablon, 26 service, 14 api modul
+Baza            : 19 jadval, data/ = 117 MB, events=539, inventory_transactions=65,
+                  audit_log=52, employees=1, cameras=1 (USB, ONLINE), users=2
+AI              : ai_training/ TO'LIQ QURILGAN (9 skript, .venv CUDA, hisobotlar)
+
+Bu hujjat — kodga TEGMASDAN tayyorlangan audit va reja. Hech qanday source fayl
+o'zgartirilmagan; faqat AUDIT.txt va PLAN.txt qo'shildi.
+
+
+================================================================================
+0. ENG MUHIM TOPILMA — HOZIRGI HOLAT HIMOYALANMAGAN
+================================================================================
+`git status`: 14 modified + 15 untracked. Ikkala checkpoint tegi ham 9c853d5 da,
+ya'ni QR modulining BARCHA kodi hali COMMIT QILINMAGAN:
+
+  untracked: app/api/assets.py, app/models/asset.py, app/services/asset_monitor.py,
+             app/services/asset_service.py, app/services/qr_service.py,
+             app/services/schema_migration.py, 5 ta asset shabloni,
+             tests/test_asset_qr.py, tests/test_asset_monitor.py, ai_training/
+  modified : app/api/deps.py, app/api/pages.py, app/config.py, app/database.py,
+             app/main.py, app/models/{__init__,enums,equipment}.py,
+             app/services/pipeline_service.py, app/ui/templates/{base,dashboard}.html,
+             requirements.txt, tests/conftest.py, .env.example
+
+Natija: `git checkout -- .`, `git clean -fd` yoki disk nosozligi = kunlik ish
+yo'qoladi, chunki commit qilingan nusxa eski holatni saqlaydi.
+QOIDA: keyingi HAR QANDAY ishdan oldin 9.1 bo'limidagi himoya qadamlari bajariladi.
+
+
+================================================================================
+0.1  ADDENDUM — PRINCIPAL ENGINEER FINAL SAFETY RULES (P-01..P-12)
+================================================================================
+Qabul qilindi va rejaga kiritildi. Har bir qoida qaysi bo'limda amalga oshadi:
+
+  P-01  `git add -A` ko'r-ko'rona ishlatilmaydi -> 9.1(a,b)
+  P-02  bundle commit qilinmagan kodni himoya qilmaydi -> 9.1(e,f)
+  P-03  DB+media izchil snapshot, atomik restore, recovery -> 9.2, 9.3
+  P-04  Watchdog mavjud reconnect/backoff va Monitor bilan -> 6, PHASE 4
+  P-05  AI muhit qayta yaratilmaydi; dataset holati hujjatlashtiriladi -> 10 (AI)
+  P-06  liveness / readiness / camera health / AI health ALOHIDA -> 6, PHASE 5
+  P-07  Audit aktyori faqat autentifikatsiyadan olinadi -> PHASE 6, P2-6
+  P-08  Import chegaralari: hajm, qator/ustun, zip bomb, buzuq XLSX,
+        encoding, duplicate, transaction rollback -> 6, PHASE 7
+  P-09  Har funksiya: unit + integration + regression + failure test -> 8
+  P-10  Har PHASE hisoboti majburiy formatda -> 10.1
+  P-11  Bajarilmagan tekshiruvni "bajarildi" deb yozish taqiqlanadi -> 10.1
+  P-12  Asosiy kodni ko'chirish/katta refactor — faqat alohida ruxsat -> 5
+
+PRINCIPLE: PRESERVE FIRST. BACKUP SECOND. CHANGE MINIMALLY.
+           TEST CONTINUOUSLY. VERIFY EVERYTHING.
+
+
+================================================================================
+1. REPOSITORY HAQIDA XULOSA
+================================================================================
+Bu — server-side render qiladigan (Jinja2) FastAPI monoliti. REST API emas:
+formalari HTML `<form>` + `Form(...)` + sessiya cookie + CSRF. Shu sababli
+"Pydantic schemas / SPA / API-first" yondashuv bu loyihaga mos emas va uni
+majburan kiritish mavjud 15 sahifani buzadi.
+
+Kuchli tomonlari (tekshirilgan):
+  * qatlamlar allaqachon ajratilgan: api -> services -> models/database;
+  * konfiguratsiya bitta frozen dataclass + lru_cache + `warnings()` (config.py);
+  * SQLite WAL + busy_timeout + FK + `session_scope()` (database.py);
+  * additiv migratsiya + migratsiyadan oldin avtomatik nusxa + rollback
+    (schema_migration.py:155-229, MIGRATIONS tuple :72);
+  * PBKDF2 260k, CSRF `compare_digest`, `safe_next_url`, xatolar brauzerga
+    chiqmaydi (5 exception handler), /api/docs production'da o'chiq;
+  * 325 test, 22 test fayl; QR moduli 42/42 jonli HTTP tekshiruvidan o'tgan;
+  * AI o'qitish butunlay ajratilgan (app/ ai_training/ ga hech qanday import
+    qilmaydi) — bu aynan §9 talab qilgan izolyatsiya.
+
+Zaif tomonlari: ekspluatatsiya qatlami (backup, watchdog, monitoring, import) va
+ko'lam (COUNT/N+1/pagination) — batafsil AUDIT.txt da (E-01..E-20).
+
+
+================================================================================
+1.1. MASTER-PROMPT 13 MAQSADI vs HOZIRGI HOLAT
+================================================================================
+  #  Maqsad                      Holat      Dalil
+  1  Funksiyalarni saqlash       BOR        325 test, 15 sahifa 200
+  2  Arxitektura tartibi         QISMAN     api/services/models/utils bor;
+                                            repositories/schemas/workers yo'q
+  3  Xavfsizlik                   QISMAN     CSRF/PBKDF2 bor; header, session
+                                            epoch, RTSP parol, throttle yo'q
+  4  DB ishonchliligi            BOR        WAL, FK, busy_timeout, additiv migratsiya
+  5  Backup + restore            QISMAN     faqat migratsiya oldidan nusxa;
+                                            kunlik/checksum/restore UI YO'Q
+  6  Camera/AI watchdog          QISMAN     worker ichida reconnect+backoff bor
+                                            (camera_service.py:365-400);
+                                            supervisor/restart/klassifikatsiya YO'Q
+  7  Monitoring                  QISMAN     faqat /healthz (public, minimal);
+                                            /readyz, /metrics, dashboard YO'Q
+  8  To'liq audit                QISMAN     auth.*, user.*, camera.*, asset.*(
+                                            create/update/assign/release/repair/
+                                            camera link/qr.print/qr.reissue),
+                                            event.*, export.*, sheets.*,
+                                            settings.update yoziladi; IP, result,
+                                            logout yo'q; UI 40 satr
+  9  Excel/CSV import            YO'Q       faqat eksport (downloads.py)
+ 10  AI alohida muhit + eval    BOR        ai_training/.venv, 9 skript,
+                                            configs/training.yaml, MODEL_CARD.md,
+                                            REGRESSION.md, benchmark/eval JSON
+ 11  GPU tekshiruvi             BOR        RTX 5070 12 GB; o'qitish bajarilgan
+                                            (77 epoch, 11.0 daq, yolo26m)
+ 12  Testlar + CI               QISMAN     325 test BOR; CI va coverage YO'Q
+ 13  Kengaytiriladigan struktura QISMAN    service qatlami bor, lekin me'yor
+                                            hujjatlashtirilmagan
+
+Xulosa: MASTER-PROMPT ning 4 ta moduli (AI muhiti, baholash, model kartasi,
+rollback) allaqachon qurilgan — ularni QAYTA YOZISH SHART EMAS. Haqiqiy ish:
+backup/restore, watchdog, monitoring, audit UI, import, CI, xavfsizlik.
+
+
+================================================================================
+2. HOZIRGI ARXITEKTURA XARITASI (faqat mavjud fayllar)
+================================================================================
+BOOT
+  run.py ................ uvicorn --host/--port/--reload; sozlamalar config.py dan
+  app/main.py ........... create_app(): SessionMiddleware, 13 router, 5 exception
+                          handler, /healthz, /static mount, lifespan -> monitor
+  app/database.py ....... Engine (WAL, FK, busy_timeout), get_db(), session_scope(),
+                          init_db() -> schema_migration.apply_migrations()
+
+HTTP QATLAMI (app/api/)
+  pages.py .............. /, /live, /review (operator), dashboard
+  auth.py ............... login/logout, users CRUD, parol, toggle, _attempts guard
+  deps.py ............... require_user/roles/admin/operator, verify_csrf, render(),
+                          flash/notices, safe_range, form_int/float, evidence_file
+  employees.py .......... /employees, /employees/{code}, reference photos
+  equipment.py .......... /equipment, /inventory (eski inventar)
+  assets.py .............. /assets ..., /assets-print, /qr/{token}, 24 route (QR)
+  cameras.py ............ /cameras CRUD, line coords, toggle, delete
+  events.py ............. /review, review qarori, snapshot, search
+  maintenance.py ........ texnik xizmat / ta'mirlash sahifalari
+  reports.py ............ /reports, CSV/XLSX eksport
+  settings.py ........... /settings, .env ni whitelist bo'yicha yangilash, model reload
+  downloads.py .......... dataset eksportlari (xlsx/csv), audit yozuvi bilan
+  sheets_setup.py ....... Google Sheets ulash, test, toggle
+  training.py ........... o'qitish yordamchi sahifasi
+
+DOMEN QATLAMI (app/services/, 26 fayl)
+  pipeline_service.py (850)  kadr -> YOLO -> ByteTrack -> face -> crossing/possession
+  camera_service.py (386)    OpenCVSource / SimulationSource, reconnect+backoff
+  monitoring_service.py(326) singleton Monitor: runtime registry, janitor,
+                             gallery-watch, sheets scheduler, refresh_detection_rules
+  asset_service.py (1314)    QR inventar domenining markazi: asset/assignment/usage/
+                             movement/repair/technician/camera-link + audit_asset()
+  qr_service.py (381)        token, payload, PNG, yorliq o'lchamlari, A4 varaq
+  asset_monitor.py           kamera kadridan QR o'qish (throttle, miss-budget)
+  event_service.py           query_events, pending_reviews, review_event (+ledger)
+  inventory_service.py       InventoryTransaction ledger
+  employee_service.py        xodim CRUD, reference photo, embedding
+  equipment_service.py       kategoriya + eski asset CRUD
+  face_service.py            InsightFace gallery, recognize
+  yolo_service.py            model yuklash, detect, rules (DB kategoriyalari)
+  tracking_service.py        ByteTrack state
+  association_service.py     person <-> equipment bog'lash
+  evidence_service.py        still saqlash/ochish
+  cleanup_service.py         purge events/evidence, retention
+  export_service.py          dataset -> rows -> xlsx/csv (MAX_ROWS=20 000)
+  google_sheets_service.py   push/sync + SheetsScheduler
+  settings_service.py        FIELDS whitelist, update_env (izohlarni saqlaydi),
+                             refresh_runtime(monitor)
+  sample_service.py          o'quv namunasi
+  audit_service.py           record() + recent()          <-- §11 shu yerga tayanadi
+  bootstrap.py               birinchi admin
+  schema_migration.py        MIGRATIONS + backup + apply + rollback (CLI ham bor)
+  types.py, overlay.py       DTO va kadr ustiga chizish
+
+MODEL QATLAMI (app/models/): user, employee, camera, equipment (+asset), ledger,
+  enums. `app/models/__init__.py` hammasini import qiladi -> create_all to'liq.
+
+UI: app/ui/templates/*.html (23) — barchasi base.html dan meros oladi;
+    app/ui/static/app.js — 4 s da bir /status va /snapshot so'rovlari.
+
+AI (izolyatsiya qilingan): ai_training/{.venv,configs,dataset,models,runs,reports,
+  scripts}. production `.venv` ga hech qanday aloqasi yo'q. Deploy nuqtasi —
+  data/models/equipment_candidate.pt; production model data/models/equipment_best.pt
+  hozir YO'Q -> tizim yolov8s.pt (COCO) fallback bilan ishlaydi, YOLO_DEVICE=cpu.
+
+Bog'lanish yo'nalishi (muhim): api -> services -> models; services hech qachon
+api ni import qilmaydi; `deps.py` yagona ko'ndalang qatlam; Monitor singleton
+service'larni ushlab turadi va fon oqimlarini boshqaradi.
+
+
+================================================================================
+3. ENG XAVFLI KAMCHILIKLAR
+================================================================================
+P0 (bugun, ma'lumot/buzilish xavfi eng yuqori)
+  P0-1  QR moduli commit qilinmagan (0-bo'lim).            -> 9.1 himoya
+  P0-2  Kunlik backup yo'q; 117 MB data/ va 539 event faqat bitta diskda.
+                                                           -> 9.2 backup moduli
+P1 (xavfsizlik, arzon tuzatish)
+  P1-1  RTSP parol HTML manba kodida: cameras.html:92 (ro'yxatda masked_source
+        ishlatiladi, forma esa xom `source` ni qaytaradi; camera.py:71 masked_source).
+  P1-2  Security header yo'q (main.py:69-76 da faqat SessionMiddleware).
+  P1-3  Login throttle faqat jarayon xotirasida, hech qachon tozalanmaydi
+        (auth.py:33-56) -> restart/multi-worker da kuchsiz + sekin memory leak.
+  P1-4  Parol o'zgarganda sessiyalar bekor qilinmaydi (auth.py:188; cookie 12 soat).
+  P1-5  /healthz public va kamera sonini oshkor qiladi (main.py:144-151).
+  P1-6  Standart administrator paroli manba kodida: .env.example:23
+        `BOOTSTRAP_ADMIN_PASSWORD=Admin123!` (config.py:196 da ham default).
+        `warnings()` buni faqat production'da ogohlantiradi (config.py:153) —
+        development'da jimgina qoladi. Repo ochiq bo'lsa bu ma'lum credential.
+P2 (ishonchlilik / ko'lam)
+  P2-1  Watchdog yo'q: oqim o'lsa qayta tiklanmaydi (monitoring_service.py:138-162).
+  P2-2  /equipment: to'liq skan + N+1 (equipment.py:37-40).
+  P2-3  /equipment 300, /employees 200 da JIMGINA kesiladi; badge esa ko'rilgan
+        sonni ko'rsatadi (equipment_service.py:224, employee_service.py:317,
+        equipment.html:8, employees.html:16).
+  P2-4  Eksport butunlay xotirada (export_service.py:34,430; downloads.py:121).
+  P2-5  Son uchun satr yuklash: len(pending_sync_events(limit=...))
+        (pages.py:78, reports.py:60,178, sheets_setup.py:58).
+  P2-6  Audit aktyor ismi 12 joyda qotib qolgan `username="admin"`
+        (employee_service.py:77,98,223,259,292,307; equipment_service.py:125,185,213;
+        sample_service.py:195,228,267) -> `audit_service.record()` da
+        `username or user.username` tufayli operator harakati "admin" bo'lib yoziladi.
+        Hozir bazada 52/52 yozuv "admin" (faqat bitta admin ishlagan), ya'ni xato
+        LATENT — ikkinchi operator ishlashi bilan noto'g'ri ma'lumot paydo bo'ladi.
+  P2-7  Auditda IP, natija (result), logout yo'q; UI faqat oxirgi 40 satr.
+  P2-8  QR yorliq chiqarish A4 varaqda `user=None` bilan ishlaydi
+        (assets.py:302-309) -> "kim chop etdi" yozilmaydi (faqat bitta asset
+        sahifasidagi print auditlanadi: assets.py:456).
+
+
+================================================================================
+4. MAVJUD KODNI BUZISHI MUMKIN BO'LGAN JOYLAR (o'zgartirishdan oldin o'qiladi)
+================================================================================
+  1  app/api/deps.py ............ har bir route shu yerga tayanadi: sessiya
+      kalitlari, CSRF, render() konteksti. Buzilsa 15 sahifa + barcha formalar.
+  2  app/main.py ................ router tartibi va middleware: yangi middleware
+      noto'g'ri joyda bo'lsa /static yoki /login ishlamaydi.
+  3  app/database.py ............ PRAGMA tartibi, `reset_for_tests` testlar uchun;
+      init_db() ichidagi migratsiya chaqiruvi startup'ni to'xtatishi mumkin.
+  4  app/services/pipeline_service.py (850 satr) — jonli oqim; import vaqtidagi
+      og'ir ish yoki istisno kamerani o'chiradi.
+  5  app/services/camera_service.py — reconnect/backoff mantiqi; `_stop` Event
+      bilan to'xtash tartibi.
+  6  app/config.py .............. frozen dataclass: yangi maydon default'siz
+      qo'shilsa ilova umuman ko'tarilmaydi; `lru_cache` + reload_settings().
+  7  app/models/__init__.py ..... yangi model shu yerda import qilinmasa
+      create_all uni ko'rmaydi (jimgina).
+  8  app/services/schema_migration.py — REAL baza; faqat additiv, faqat backup
+      bilan, faqat startup oldidan.
+  9  app/ui/templates/base.html . barcha sahifalar meros oladi (nav, csrf, notices).
+ 10  tests/conftest.py ......... env o'zgaruvchilarini o'rnatadi va app yasaydi;
+      o'zgarish 325 testning hammasiga ta'sir qiladi.
+ 11  app/services/audit_service.py — `username` argumentining ustunlik semantikasi
+      (P2-6) butun audit sifatiga ta'sir qiladi.
+
+
+================================================================================
+5. ARXITEKTURA TAVSIYASI (Senior Engineer pozitsiyasidan)
+================================================================================
+QILAMIZ: "additiv kengaytirish" — har bir yangi imkoniyat uchun bitta service +
+mavjud router ichida route. Yangi kichik paketlar faqat HAQIQIY yangi qatlam uchun:
+    app/services/backup_service.py      (backup/restore)
+    app/services/import_service.py      (csv/xlsx import)
+    app/services/watchdog_service.py    (supervisor)
+    app/monitoring/{health,metrics}.py  (readiness/metrics)  <- yangi papka
+    app/utils/http_security.py          (header middleware)
+    app/api/audit.py                    (audit sahifasi routeri)
+    app/api/backups.py                  (backup sahifasi/route)
+    app/api/imports.py                  (import route)
+
+QILMAYMIZ (hozircha): app/core/, app/repositories/, app/schemas/, app/workers/ ga
+fayllarni KO'CHIRISH. Sabab:
+  * 90 fayl, 19 367 satr, 325 test — ko'chirish importlarni, shablon yo'llarini
+    (PROJECT_ROOT / "app" / "ui"), thread nomlarini va testlarni birvaqtda buzadi;
+  * foyda asosan estetik: qatlamlar allaqachon mavjud (api/services/models/utils);
+  * loyihada Pydantic sxemalari yo'q (Form + Jinja), `schemas/` sun'iy bo'lardi;
+  * master-prompt ham "mavjud strukturani to'liq o'zgartirish shart emas" deydi.
+Agar keyinchalik kerak bo'lsa — `app/core/` ni yupqa re-export qatlami sifatida
+qo'shish mumkin (config/security/logging ni ko'chirmasdan, import yo'llarini
+saqlab). Bu alohida faza va alohida ruxsat talab qiladi.
+
+
+================================================================================
+6. FILE-BY-FILE PLAN (haqiqiy fayl nomlari)
+================================================================================
+YANGI FAYLLAR
+  app/services/backup_service.py     nusxa olish (sqlite3 backup API), checksum
+                                     (sha256), ro'yxat, integrity_check,
+                                     restore (+oldindan safety backup), rotation 14,
+                                     media (evidence/employees) bilan birga.
+  app/services/import_service.py     3 bosqich: preview -> validate -> import.
+                                     CSV/XLSX. Chegaralar: fayl <= 10 MB, <= 5 000
+                                     qator, <= 40 ustun. ZIP bomb (siqilish nisbati
+                                     > 100x yoki ochilganda > 100 MB) rad etiladi.
+                                     Buzuq XLSX -> aniq xato (traceback emas).
+                                     Encoding: utf-8 / utf-8-sig / cp1251 aniqlanadi.
+                                     Duplicate siyosati: skip | update | report.
+                                     Import = BITTA transaction, xato -> rollback.
+  app/services/watchdog_service.py   MAVJUD reconnect/backoff ni QAYTA YOZMAYDI.
+                                     camera_service._run() (365-400) va Monitor
+                                     start_camera/stop_camera (138-172) ni o'rab,
+                                     FAQAT nazorat qiladi (ADDENDUM 4).
+                                     Tekshiradi: thread.is_alive(), heartbeat,
+                                     last_frame_at, oxirgi kadr yoshi, oxirgi
+                                     inference vaqti, consecutive_failures.
+                                     Restart = Monitor.stop_camera + start_camera
+                                     (ikkinchi mustaqil mexanizm YO'Q), backoff +
+                                     circuit breaker + restart tarixi.
+  app/monitoring/health.py           4 ALOHIDA signal (ADDENDUM 6):
+                                     liveness (/healthz: faqat process tirik),
+                                     readiness (/readyz: DB + workerlar + model),
+                                     camera health (har kamera alohida),
+                                     AI health (model yuklanganmi, oxirgi infer).
+                                     Bitta kamera OFFLINE bo'lsa readiness 200
+                                     qoladi (degraded) — faqat kamera bo'limi qizil.
+  app/monitoring/metrics.py          /metrics (Prometheus matn) — cpu/ram, kamera
+                                     online/offline, infer FPS/latency, restart
+                                     soni, pending event, backup oxirgi holati.
+  app/utils/http_security.py         security header middleware (CSP frame-ancestors,
+                                     nosniff, Referrer-Policy, Permissions-Policy,
+                                     HSTS faqat https'da).
+  app/api/audit.py                   /audit sahifasi: pagination + sana/user/action/
+                                     entity filtri + qidiruv + CSV.
+  app/api/backups.py                 /settings#backup: "hozir nusxa ol", ro'yxat,
+                                     yuklab olish, restore (tasdiq bilan).
+  app/api/imports.py                 /import: preview -> validate -> import.
+  app/ui/templates/audit.html        audit jadvali (base.html dan meros).
+  app/ui/templates/backups.html      backup ro'yxati va tugmalar.
+  app/ui/templates/import.html       preview/validation/import natijasi.
+  tests/test_backup.py               nusxa, checksum, integrity, restore, rotation.
+  tests/test_watchdog.py             crash -> restart, backoff, circuit breaker,
+                                     duplicate worker yo'qligi.
+  tests/test_import.py               valid/invalid/duplicate/oversize/encoding.
+  tests/test_audit_page.py           filtr, pagination, CSV, ruxsat.
+  tests/test_security_headers.py     headerlar mavjudligi, RTSP parol maskalanishi.
+  tests/test_monitoring.py           /healthz, /readyz, /metrics ruxsat bilan.
+  .github/workflows/tests.yml        Windows + Python 3.12 + pip + pytest.
+  docs/BACKUP_RESTORE.txt            qadam-baqadam tiklash yo'riqnomasi.
+
+O'ZGARTIRILADIGAN FAYLLAR
+  app/main.py                        middleware (http_security) + yangi routerlar
+                                     (audit, backups, imports) + monitor lenta;
+                                     /healthz ni monitor.health ga o'tkazish.
+  app/api/deps.py                    `render()` ga qo'shimcha global (masalan
+                                     pending_reviews) — EHTIYOTKOR, barcha sahifa.
+  app/api/settings.py                audit limit 40 -> sahifalash (yoki /audit ga
+                                     havola), backup bo'limi.
+  app/api/cameras.py                 `source` bo'sh kelsa eski qiymatni saqlash;
+                                     parolni logga yozmaslik.
+  app/ui/templates/cameras.html:92   forma `value` ni bo'shatish, masked_source
+                                     ko'rsatish, "o'zgartirmaslik uchun bo'sh".
+  app/api/auth.py                    session epoch: login da epoch yozish;
+                                     parol o'zgarganda oshirish; "hamma qurilmadan
+                                     chiqish"; throttle ni DB/janitor bilan.
+  app/models/user.py                 `session_epoch: int` (default 0) — migratsiya 002.
+  app/models/__init__.py             yangi model importi (agar qo'shilsa).
+  app/services/schema_migration.py   MIGRATIONS ga 002 qo'shish (user.session_epoch,
+                                     audit_log.ip, audit_log.result).
+  app/services/audit_service.py      `ip`, `result` maydonlari; `username` ustunlik
+                                     mantiqini tuzatish (P2-6).
+  app/services/employee_service.py   `username="admin"` -> faqat `user=user`
+  app/services/equipment_service.py  (6+3 ta joy), count() bilan /equipment GROUP BY
+  app/services/sample_service.py     (3 joy).
+  app/services/monitoring_service.py watchdog_service ni ishga tushirish/register;
+                                     kunlik backup vazifasini janitor'ga qo'shish.
+  app/services/cleanup_service.py    kunlik backup/rotation chaqiruvi (yoki
+                                     backup_service da alohida tsikl).
+  app/services/export_service.py     `xlsx_stream()` / `csv_stream()` (write_only).
+  app/api/downloads.py               StreamingResponse / FileResponse.
+  app/api/reports.py                 COUNT (E-06), 20 000 qator chegarasi sozlanadigan.
+  app/api/pages.py                   COUNT (E-06).
+  app/api/sheets_setup.py            COUNT (E-06).
+  app/api/equipment.py               pagination + haqiqiy count badge.
+  app/api/employees.py               pagination + haqiqiy count badge.
+  app/ui/templates/equipment.html    badge = jami; sahifalash.
+  app/ui/templates/employees.html    badge = jami; sahifalash.
+  app/ui/templates/base.html         nav: "Audit", "Import" havolalari.
+  app/config.py                      yangi sozlamalar (BACKUP_DIR, BACKUP_KEEP,
+                                     BACKUP_HOUR, METRICS_TOKEN) — default bilan.
+  .env.example                       shu kalitlar + izohlar.
+  requirements.txt                   pytest-cov (ixtiyoriy), boshqa yangi paket YO'Q
+                                     (backup/import uchun stdlib + openpyxl yetarli).
+  docs/, INSTALL.txt, README.md      Python 3.12.10, backup/restore, monitoring.
+
+YANGI PAKET QO'SHILMAYDI: prometheus-client ham shart emas — /metrics oddiy matn
+sifatida yoziladi (dependency kamaytirish uchun).
+
+
+================================================================================
+7. DATABASE MIGRATION XAVFLARI
+================================================================================
+Hozirgi holat: 19 jadval, bitta fayl data/inventory.db + -wal/-shm, WAL rejimi,
+539 event va 52 audit yozuvi (haqiqiy ma'lumot). Migratsiya mexanizmi:
+MIGRATIONS tuple (schema_migration.py:72) + schema_migrations tarix jadvali +
+migratsiyadan oldin `backup_database()` + transaction + rollback.
+
+Xavflar va choralar:
+  1  -wal/-shm fayllari nusxaga tushmasa, nusxa "eski" holatda bo'ladi.
+     Chora: `sqlite3.Connection.backup()` (allaqachon ishlatiladi), shutil.copy emas.
+  2  NOT NULL ustunni default'siz qo'shish mavjud qatorlar bo'lsa FAIL bo'ladi.
+     Chora: faqat `NULL` yoki `DEFAULT ...` bilan; barcha yangi ustunlar nullable
+     yoki default bilan.
+  3  Ustun nomi to'qnashuvi (masalan, `result`) — oldindan PRAGMA table_info bilan
+     tekshirish; runner `_table_columns()` ni allaqachon ishlatadi.
+  4  Migratsiya startup'da `monitor.start()` dan OLDIN ishlaydi (main.py:47-49) —
+     bu to'g'ri; fon oqimlari ishlab turganda ALTER qilish tavsiya etilmaydi.
+     Chora: migratsiyani faqat shu tartibda qoldirish, CLI orqali qo'lda emas.
+  5  Rollback `DROP COLUMN` SQLite'da barcha versiyalarda ham to'liq emas.
+     Chora: rollback faqat qo'shilgan ustunlar uchun, oldingi nusxadan tiklash
+     asosiy yo'l sifatida hujjatlashtiriladi.
+  6  Yangi jadval qo'shilsa `create_all` uni yaratadi, lekin indekslarni alohida
+     ko'rib chiqish kerak (asset_movement_events.dedupe_key allaqachon unique).
+  7  Boolean/enum ustunlar STRING sifatida saqlanadi (Role, Status) — yangi
+     ustunlarda ham shu konvensiya saqlanadi, aks holda mavjud filterlar buziladi.
+
+Rejalashtirilgan yagona migratsiya (002):
+  users.session_epoch      INTEGER NOT NULL DEFAULT 0
+  audit_log.ip             VARCHAR(64)  NULL
+  audit_log.result         VARCHAR(24)  NULL
+  (ixtiyoriy) events.review_note, asset_movement_events.reviewed_by_user_id
+Barchasi additiv, ma'lumot yo'qotmaydi, oldindan nusxa olinadi.
+
+
+================================================================================
+8. TEST STRATEGIYASI
+================================================================================
+Baza: 325 ta mavjud test — REGRESSIYA ETALONI. Har fazadan keyin to'liq yugurish
+va natija pasaymasligi shart. Hech bir testni o'chirmaymiz, assertionni
+kuchsizlantirmaymiz.
+
+ADDENDUM 9: har bir YANGI funksiya uchun 4 daraja majburiy —
+  1) unit (sof funksiya/service, DB'siz),
+  2) integration (route + service + test DB),
+  3) regression (mavjud xatti-harakat o'zgarmagani),
+  4) failure (xato sharoiti: uzilish, buzuq fayl, ruxsat yo'q).
+Mezon — real xatti-harakat va dalil; test soni ko'rsatkich emas.
+
+Yangi testlar (fayl -> nima tekshiradi):
+  test_backup.py        nusxa yaratiladi, sha256 mos, PRAGMA integrity_check = ok,
+                        rotation 14 tadan oshmaydi, restore safety-backup oladi,
+                        restore noto'g'ri faylni rad etadi.
+  test_watchdog.py      oqim o'ldiriladi -> qayta ko'tariladi; backoff o'sadi;
+                        circuit breaker ochiladi; ikki marta start = bitta thread.
+  test_import.py        preview DB ni o'zgartirmaydi; valid qatorlar import
+                        bo'ladi; duplicate -> skip/update/report; 5 MB dan katta
+                        fayl rad etiladi; cp1251/utf-8 aniqlanadi.
+  test_audit_page.py    filtr (sana/user/action), pagination, CSV, admin-only.
+  test_security_headers.py  headerlar bor; https_only'da HSTS bor; cameras.html
+                        da parol yo'q; parol o'zgarsa eski sessiya 401/303.
+  test_monitoring.py    /healthz minimal (kamera soni yo'q), /readyz 200,
+                        /metrics token bilan.
+  test_schema_migration.py (kengaytiriladi) 002 qo'llanadi, mavjud ustunlar
+                        saqlanadi, backup yaratiladi, ikkinchi marta idempotent.
+
+Failure testlari (mock emas, real lokal komponent):
+  * import_service: buzuq xlsx, bo'sh fayl, 100 000 qatorli fayl;
+  * backup: yarim yozilgan fayl, ruxsat yo'qligi;
+  * watchdog: `_run` ichida ataylab istisno tashlash.
+
+Coverage: `pytest --cov=app --cov-report=term-missing` (pytest-cov dev
+dependency sifatida). Maqsad — pasaytirmaslik, modul bo'yicha ko'rinish.
+CI: `.github/workflows/tests.yml` (windows-latest, Python 3.12, pip install -r
+requirements.txt, pytest -q). AI paketlari CI ga KIRMAYDI (ular og'ir va CPU
+runner'da kerak emas).
+
+
+================================================================================
+9. BACKUP VA ROLLBACK STRATEGIYASI
+================================================================================
+9.1  Hozir, birinchi qadam (kod tegishdan oldin) — ADDENDUM 1, 2
+  a) KO'RIK: `git status --porcelain` + `git add --dry-run --all`.
+     Tekshirildi (2026-11-05): commitga 47 fayl tushadi — 14 modified
+     (app/*.py, 2 shablon, requirements.txt, tests/conftest.py, .env.example),
+     15 QR moduli fayli, 18 ai_training fayli. `.gitignore` avtomatik chiqaradi:
+     .env, .venv/, data/, dataset/, runs/, *.pt, *.json, logs/, secrets/.
+     Sir tekshiruvi: 47 faylda real token/parol/private key YO'Q
+     (PEM faqat tests/test_sheets_setup.py dagi soxta fixture; RTSP misollari —
+     `user:pass` placeholder). `.env` git'da kuzatilmaydi; secrets/ bo'sh.
+  b) ANIQ RO'YXAT bilan staging (`git add -A` EMAS): `git add <fayl1> <fayl2> ...`.
+     ai_training/ alohida commit qilinadi (18 fayl, kod + hujjat; dataset/model yo'q).
+  c) Commitlar: 1) "QR inventory module (assets, labels, assignment, monitoring)"
+     2) "ai_training: isolated YOLO pipeline + reports" 3) "docs: audit + plan".
+  d) `git tag checkpoint-before-safe-upgrade-2026-11-05` — commitlardan KEYIN.
+  e) `git bundle create ..\dxm-bundle-20261105.bundle --all` — bu FAQAT commit
+     qilingan kodni himoya qiladi (ADDENDUM 2), shu sababli f) MAJBURIY:
+  f) WORKING TREE nusxasi (commitga tushmagan hamma narsa bilan, repodan
+     tashqarida):
+       robocopy . ..\dxm-worktree-20261105 /E /XD .venv data runs logs
+                ai_training\.venv ai_training\dataset ai_training\runs
+     Natijani `git status` bilan solishtirish (47 fayl + .env bo'lishi kerak).
+  g) `data/` nusxasi SQLite backup API bilan — DB + evidence/ + employees/
+     BIRGA (9.2 dagi manifest formati bo'yicha).
+  h) `pip freeze > ..\requirements-freeze-20261105.txt`.
+  i) Faqat shundan keyin branch: `safe-upgrade`.
+  * HECH QACHON `git reset --hard`, `git clean -fd`, `git checkout -- .`
+    ishlatilmaydi (ADDENDUM 1).
+
+9.2  Kunlik avtomatik backup (backup_service) — ADDENDUM 3
+  * sqlite3.Connection.backup() -> data/backups/daily-YYYYMMDD-HHMM.db
+  * izchil SNAPSHOT tartibi: 1) DB nusxasi (backup API — yozuvchi to'xtamasa ham
+    izchil); 2) snapshot vaqti yoziladi; 3) SHU vaqtdan keyingi media
+    (evidence/, employees/) ro'yxati olinadi; 4) manifest.json:
+    db_sha256, files[{path,size,sha256}], snapshot_at, schema_migrations oxirgi id.
+  * sha256 checksum + `PRAGMA integrity_check` natijasi manifestga;
+  * rotation: oxirgi 14 nusxa; xato bo'lsa log + (keyinroq) ogohlantirish;
+  * ikkinchi nusxa: tashqi disk/network path (BACKUP_MIRROR_DIR) — ixtiyoriy,
+    lekin tavsiya etiladi;
+  * jadval: har kuni BACKUP_HOUR (default 02:00) — janitor tsiklida, qo'shimcha
+    thread ochmasdan.
+
+9.3  Restore (atomik, recovery bilan) — ADDENDUM 3
+  OLD SHART (tekshirilmasa restore BOSHLANMAYDI):
+   * barcha yozuvchilar to'xtagan: CameraWorker, CameraPipeline, janitor,
+     gallery-watch, sheets scheduler — har biri `join()` + `is_alive()==False`;
+   * faol DB transaction yo'q; run.py process'i bitta (ikki nusxa ishlamayapti).
+  TARTIB:
+   1. Admin /backups: nusxa + sabab + tasdiq so'zi (CSRF bilan).
+   2. MANIFEST tekshiruvi: sha256 mos + `PRAGMA integrity_check` = ok.
+   3. PRE-RESTORE nusxa (joriy holat) -> data/backups/pre-restore-<vaqt>.
+   4. ATOMIK almashtirish: yangi fayl `inventory.db.restore-tmp` ga yoziladi ->
+      `os.replace()` (bir diskda atomik) -> eski -wal/-shm o'chiriladi.
+   5. POST tekshiruv: integrity_check, schema_migrations id, jadval soni (19),
+      events soni o'qiladi.
+   6. RECOVERY: 5-qadam xato bersa — pre-restore nusxa xuddi shu atomik usulda
+      qaytariladi, holat "restore failed" deb yoziladi, audit yoziladi,
+      monitor AVTOMATIK qayta ishga tushirilmaydi (admin qaror qiladi).
+   7. Muvaffaqiyat: audit action="backup.restore" details={fayl, sha256, old_sha256};
+      monitor.start(); /readyz yashil bo'lgandan keyingina "ok" deb e'lon qilinadi.
+  * Restore faqat admin, CSRF bilan, tasdiq so'zi bilan, TESTDAN O'TGAN nusxa bilan.
+  * Sinalmagan restore "bajarilgan restore" deb hisoblanmaydi (ADDENDUM 11).
+
+9.4  Har phase uchun rollback
+  * Har phase — alohida branch yoki kamida alohida commit + teg.
+  * Kod rollback: `git revert <commit>` (reset --hard EMAS).
+  * Baza rollback: faqat phase boshidagi nusxadan (002 additiv, shuning uchun
+    kodni qaytarish yetarli bo'lishi mumkin — ustunlar bo'sh qoladi).
+  * Konfiguratsiya: `.env` nusxasi (settings_service allaqachon izohlarni saqlaydi
+    va tmp+replace bilan atomik yozadi).
+
+
+================================================================================
+10. ISH TARTIBI VA GATE'LAR
+================================================================================
+PHASE 0  BASELINE            BAJARILDI (shu hujjat + AUDIT.txt)
+PHASE 1  DESIGN              BAJARILDI (shu hujjat)
+PHASE 1.5 HIMOYA             9.1 a-f  <-- ruxsat kerak: commit + teg + nusxa
+PHASE 2  BACKUP & RESTORE    backup_service + /backups + testlar
+         GATE: nusxa yaratildi, checksum ok, restore test muhitida o'tdi
+PHASE 3  SECURITY            headerlar, RTSP maska, session epoch, throttle, /healthz
+         GATE: 325 + yangi testlar yashil; login/logout/CSRF regressiyasi o'tdi
+PHASE 4  WATCHDOG            supervisor + restart + backoff + tarix
+         GATE: crash testlari o'tdi; kamera real ishlashda uzilmadi
+PHASE 5  MONITORING          /readyz, /metrics, dashboard
+         GATE: endpointlar ruxsat bilan; /healthz public ma'lumot bermaydi
+PHASE 6  AUDIT               IP/result, username bug, /audit sahifasi
+         GATE: operator harakati to'g'ri ism bilan yoziladi (yangi test)
+PHASE 7  IMPORT              preview -> validate -> import
+         GATE: DB o'zgarmagan preview; duplicate siyosati ishlaydi; audit yoziladi
+PHASE 8  OPTIMIZATION        COUNT, N+1, pagination, streaming eksport
+         GATE: /equipment va /employees to'g'ri son; 20k eksport xotirani portlatmaydi
+PHASE 9  CI + DOCS           workflow, coverage, hujjatlar yangilanishi
+         GATE: CI yashil; INSTALL/README hujjatlari 3.12.10 ga mos
+PHASE 10 FINAL VALIDATION    to'liq testlar + real startup + UI + rollback mashqi
+         GATE: §21 checklistning har bir bandi DALIL bilan tasdiqlanadi
+
+10.1  HAR PHASE YAKUNIDAGI HISOBOT (ADDENDUM 10) — majburiy format
+  A  O'zgartirilgan/yaratilgan fayllar (to'liq ro'yxat)
+  B  Nima uchun (muammo -> sabab -> yechim)
+  C  Test: jami / passed / failed / skipped + QAYSI real xatti-harakat tekshirildi
+     (mock emas). Mezon — dalil, test soni emas (ADDENDUM 9).
+  D  Regression: 325 baseline + yangi testlar; pasayish bo'lsa — sabab
+  E  Baza: migratsiya bo'ldimi, ma'lumot saqlandimi (oldin/keyin sonlar)
+  F  Backup: oxirgi nusxa nomi, sha256, integrity_check natijasi
+  G  Rollback: aniq buyruq/qadam (git revert <sha> yoki nusxadan tiklash)
+  H  Qolgan risklar + bajarilmagan tekshiruvlar (kamera, GPU, restore)
+  I  Keyingi phase uchun tayyorlik
+  * Bajarilmagan test, tekshirilmagan kamera, ishlamagan GPU, sinalmagan restore
+    hech qachon "muvaffaqiyatli" deb yozilmaydi (ADDENDUM 11).
+
+AI (PHASE 8 / §9 prompt): QAYTA QURISH TALAB QILINMAYDI — ai_training allaqachon
+ishlaydi. Faqat quyidagilar taklif etiladi (alohida ruxsat bilan):
+  * production model hali yo'q (data/models/equipment_best.pt) — 27 sinfdan 18 tasi
+    datasetsiz; savdo nuqtasi: dataset yig'ish, keyin qayta o'qitish;
+  * shadow mode: hozir "candidate + benchmark + integration_check" bilan qisman bor;
+    to'liq shadow (ikkala model parallel, ledger'ga yozmaslik) yangi ish;
+  * YOLO_DEVICE=cpu — RTX 5070 bor, lekin production ATAYLAB cpu da (o'lchangan
+    kechikish 63.7 ms). GPU inference alohida o'lchov talab qiladi.
+  * ADDENDUM 5: muhit QAYTA YARATILMAYDI. Dataset/model holati hujjatlashtiriladi:
+    27 sinf, dataset train 282 / val 84 kadr, 18 sinfda kadr YO'Q, candidate
+    mAP50 0.7004, person recall 0.681 (yolov8s 0.894), CPU latency 1.96x.
+    Bunday classlar uchun "aniqlanadi" yoki "o'qitildi" deb da'vo qilinmaydi.
+
+
+================================================================================
+11. SIZDAN TASDIQ KERAK (kod yozishdan oldin)
+================================================================================
+  A) 9.1 himoya qadamlari (14+15+18 faylni KO'RIB, aniq ro'yxat bilan commit +
+     teg + bundle + worktree nusxa + data nusxa) — RUXSAT?
+  B) PHASE 2 (backup) dan boshlash — RUXSAT?
+  C) 5-bo'lim: fayllarni KO'CHIRMASLIK (additiv yondashuv) — TASDIQLAYSIZMI?
+  D) AI: hozircha tegmaslik (faqat dataset/model qarori alohida) — TASDIQLAYSIZMI?
+  E) ai_training/ ni ALOHIDA commit qilish (3 commit o'rniga) — MA'QULMI?
+
+  ADDENDUM (P-01..P-12) reja matniga kiritildi (0.1, 6, 8, 9.1-9.3, 10.1).
+  Hech qanday source fayl o'zgartirilmagan; kod yozish uchun A-E tasdig'i kerak.
+
+================================================================================
+  Reja oxiri. Har bir da'vo 2026-11-05 da kod/baza bo'yicha tekshirilgan.
+================================================================================

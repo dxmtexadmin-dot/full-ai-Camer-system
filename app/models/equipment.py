@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import List, Optional
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -40,7 +40,14 @@ class EquipmentCategory(Base):
 
 
 class EquipmentAsset(Base):
-    """A specific physical unit (e.g. monitor MON-001 with a serial number)."""
+    """A specific physical unit (e.g. monitor MON-001 with a serial number).
+
+    The QR-inventory module extends the original registry instead of creating a
+    parallel one: ``asset_code`` is the inventory number an operator prints on
+    the label, and the responsibility fields below are filled by
+    ``assignment_service``. All new columns are nullable or defaulted so the
+    table can be migrated in place on a live database.
+    """
 
     __tablename__ = "equipment_assets"
 
@@ -60,6 +67,24 @@ class EquipmentAsset(Base):
     registered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
+    # -- QR inventory fields (added by the asset module, safe to leave empty) --
+    name: Mapped[str] = mapped_column(String(160), default="")
+    room: Mapped[str] = mapped_column(String(80), default="")
+    department: Mapped[str] = mapped_column(String(120), default="")
+    responsible_employee_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("employees.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    # Snapshot of the F.I.Sh. at assignment time: it stays readable even if the
+    # employee record is later renamed or deactivated.
+    responsible_name: Mapped[str] = mapped_column(String(160), default="")
+    responsible_position: Mapped[str] = mapped_column(String(120), default="")
+    technician_employee_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("employees.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    technician_name: Mapped[str] = mapped_column(String(160), default="")
+    purchase_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
     category: Mapped[EquipmentCategory] = relationship(back_populates="assets", lazy="joined")
 
     @property
@@ -68,6 +93,19 @@ class EquipmentAsset(Base):
             return EquipmentStatus(self.status).label_uz
         except ValueError:
             return self.status
+
+    @property
+    def display_name(self) -> str:
+        """Device name for labels; falls back to the category name."""
+        if self.name:
+            return self.name
+        if self.category is not None:
+            return self.category.label_uz
+        return self.asset_code
+
+    @property
+    def full_model(self) -> str:
+        return " ".join(part for part in (self.brand, self.model) if part).strip()
 
     def __repr__(self) -> str:  # pragma: no cover
         return f"<EquipmentAsset {self.asset_code} ({self.category.code if self.category else '?'})>"

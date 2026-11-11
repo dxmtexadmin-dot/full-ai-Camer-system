@@ -1,0 +1,617 @@
+================================================================================
+  AI CCTV INVENTAR TIZIMI — TO‘LIQ AUDIT HISOBOTI
+================================================================================
+
+Sana          : 2026-11-05
+Loyiha        : dxm-tex-admins
+Shoxobcha     : feature/qr-inventory-monitoring  (HEAD 9c853d5)
+Muhit         : Windows 11 22H2, Python 3.12.10 (.venv), CPU only
+Test holati   : 325 passed, 1 warning  (.venv\Scripts\python.exe -m pytest -q)
+Kod hajmi     : 90 .py fayl / 19 367 satr (app + scripts + tests), 23 Jinja shablon,
+                22 test fayl
+Ma‘lumotlar   : data/ = 117 MB (SQLite + evidence stills + employees rasmlari)
+
+MAQSAD
+------
+1) Loyihada mavjud XATOLAR va XATARLARNI topish (dalil bilan: fayl:satr).
+2) Yetishmayotgan (KAMCHILIK) imkoniyatlarni sanash.
+3) Nima QO‘SHISH mumkin — foyda/mehnat bo‘yicha tartiblangan reja.
+
+MUHIM: bu hisobotda faqat kodni o‘qib VA ishga tushirib TEKSHIRILGAN narsalar bor.
+Tekshirib bo‘lmagan gumonlar hisobotga kiritilmagan.
+
+
+================================================================================
+0. QANDAY O‘RGANILDI (metodika)
+================================================================================
+a) Kod bazasi to‘liq o‘qildi: app/config.py, main.py, database.py, api/*.py,
+   services/*.py, utils/*.py, models/*.py, 23 shablon, static/app.js.
+b) Har bir da‘vo uchun grep + Read bilan aniq satr dalili olindi (quyida
+   "Dalil:" qatorlari).
+c) Jonli ishga tushirish: server ko‘tarildi, migratsiya real bazada bajarildi,
+   42 ta HTTP tekshiruvi o‘tdi (login, 15 eski sahifa, QR PNG ni OpenCV bilan
+   dekodlash, 6 ta yorliq o‘lchami, A4 varaq, biriktirish/bo‘shatish, Qayta
+   chiqarish, kamera kuzatuvi yozuvlari).
+d) To‘liq pytest to‘plami ishga tushirildi: 325 passed.
+e) Baza tekshirildi: 8 ta yangi jadval + schema_migrations yozuvi mavjud.
+
+
+================================================================================
+1. UMUMIY XULOSA
+================================================================================
+Loyiha yaxshi holatda: qatlamlar ajratilgan (api / services / models / utils),
+konfiguratsiya bitta "frozen dataclass" da, migratsiya additiv va rollback bilan,
+CSRF va PBKDF2 himoyasi bor, xatolar brauzerga stack trace chiqarmaydi, testlar
+keng. Quyidagi muammolarning KO‘PCHILIGI — "buzilgan" narsa emas, balki
+ko‘lam (scale), kuzatuv (observability) va ekspluatatsiya (backup, ogohlantirish)
+masalalari. Ya‘ni tizim hozir ishlaydi, lekin ma‘lumot ko‘paygan sari va
+"kimdir ochib ko‘rmaguncha" muammo bilinmaydigan joylari bor.
+
+Ustuvorlik tartibi (tavsiya):
+  1) E-07 (backup)  — yo‘qotish qaytarilmas, birinchi navbatda.
+  2) E-01, E-02 (xavfsizlik) — arzon, tez tuzatiladi.
+  3) E-04, E-05, E-06 (ko‘lam) — ma‘lumot ko‘payishi bilan "jimgina" buziladi.
+  4) Qolganlari — rejaviy.
+
+
+================================================================================
+2. XATOLAR VA XATARLAR  (E-xx)
+================================================================================
+
+--------------------------------------------------------------------------------
+[E-01]  MEDIUM — RTSP paroli HTML manba kodida ochiq holda chiqadi
+--------------------------------------------------------------------------------
+Dalil:
+  app/ui/templates/cameras.html:92
+      <input type="text" name="source" value="{{ row.camera.source }}" …>
+  app/ui/templates/cameras.html:39
+      <div class="mono muted">{{ row.camera.masked_source or '—' }}</div>
+  app/models/camera.py:71-72  ->  def masked_source(self)  ("Hide credentials
+      before showing the address in the UI")
+Muammo:
+  Ro‘yxatda manzil "masked_source" bilan yashiriladi, lekin TAHRIRLASH formasi
+  xom `source` ni to‘liq (rtsp://user:parol@host/...) qaytaradi. Natijada:
+    * har qanday administrator "Sahifa manbasi" ni ochib parolni ko‘radi;
+    * parol brauzer sahifa keshida / korporativ proksilog da qoladi;
+    * forma qayta yuborilganda parol ochiq matn sifatida yana sayohat qiladi.
+  Bundan tashqari `Camera.source` bazada ham shifrlanmagan (ochiq matn).
+Kimga ta‘sir qiladi: faqat /cameras sahifasi (require_admin).
+Tuzatish (kichik):
+  1) Formada `value` ni bo‘shatish: placeholder = masked_source, izoh:
+     "O‘zgartirmaslik uchun bo‘sh qoldiring".
+  2) POST handlerda: agar `source` bo‘sh bo‘lsa — mavjud qiymatni saqlab qolish.
+  3) (Ixtiyoriy, keyinroq) `source` ni maxfiy ma‘lumot sifatida `.env` yoki
+     secrets/ orqali reference bilan berish.
+
+--------------------------------------------------------------------------------
+[E-02]  MEDIUM — Xavfsizlik sarlavhalari (security headers) yo‘q
+--------------------------------------------------------------------------------
+Dalil:
+  app/main.py:69-76  — faqat bitta middleware bor: SessionMiddleware.
+  Boshqa hech qanday `@app.middleware("http")` yo‘q (grep: topilmadi).
+Muammo:
+  Javoblarda quyidagilar yo‘q: X-Content-Type-Options, X-Frame-Options (yoki CSP
+  frame-ancestors), Referrer-Policy, X-XSS-Protection, Strict-Transport-Security.
+  Natija: /settings, /cameras kabi sahifalarni iframe ichida ochib "clickjacking"
+  qilish mumkin; brauzer MIME-sniffing qilishi mumkin; tashqi havolaga o‘tilganda
+  ichki URL Referer da ketadi.
+Eslatma: to‘liq CSP hozircha qiyin, chunki `bar_style()` (app/api/deps.py:56-67)
+  shablonlarga inline `style="width: …"` chiqaradi. CSP ni `style-src` uchun
+  `'unsafe-inline'` bilan boshlash yoki `bar_style` ni CSS klasslariga o‘tkazish
+  kerak (keyingi bosqich).
+Tuzatish (juda kichik, ~20 satr):
+  @app.middleware("http") orqali 4 ta sarlavha qo‘shish:
+    X-Content-Type-Options: nosniff
+    X-Frame-Options: SAMEORIGIN
+    Referrer-Policy: same-origin
+    Permissions-Policy: geolocation=(), microphone=()
+  `https_only` rejimida qo‘shimcha: Strict-Transport-Security.
+
+--------------------------------------------------------------------------------
+[E-03]  MEDIUM — /equipment: butun jadval skaneri + N+1 so‘rov
+--------------------------------------------------------------------------------
+Dalil:
+  app/api/equipment.py:37-40
+      for asset in db.scalars(select(EquipmentAsset)).all():
+          code = asset.category.code if asset.category else None
+          if code in counts: counts[code] += 1
+Muammo:
+  Kategoriya bo‘yicha hisob-kitob uchun BARCHA qurilma obyektlari xotiraga
+  yuklanadi va har birida `asset.category` (relationship) alohida so‘rov ochadi.
+  5 000 ta qurilma = ~5 000 ta qo‘shimcha SQL so‘rov, sahifa ochilishi soniyalarga
+  cho‘ziladi. Bundan tashqari bu sahifa `require_admin` (equipment.py:33) —
+  ya‘ni har bir admin kirganda takrorlanadi.
+Tuzatish:
+      from sqlalchemy import func
+      rows = db.execute(
+          select(EquipmentCategory.code, func.count(EquipmentAsset.id))
+          .join(EquipmentAsset, EquipmentAsset.category_id == EquipmentCategory.id)
+          .group_by(EquipmentCategory.code)
+      ).all()
+      counts = {code: 0 for code in counts} | {code: total for code, total in rows}
+  (bitta SQL, O(1) xotira).
+
+--------------------------------------------------------------------------------
+[E-04]  MEDIUM — /equipment va /employees ro‘yxatlari JIMGINA kesiladi
+--------------------------------------------------------------------------------
+Dalil:
+  app/services/equipment_service.py:224   limit: int = 300
+  app/services/employee_service.py:317    limit: int = 200
+  app/api/equipment.py:34                 search_assets(db, q, …)  — limit berilmagan
+  app/api/employees.py:30                 employee_service.search(db, q, …) — limit yo‘q
+  app/ui/templates/equipment.html:8       <span class="badge outline">{{ assets | length }}</span>
+  app/ui/templates/employees.html:16      <span class="badge outline">{{ employees | length }}</span>
+Muammo:
+  Ikki tomonlama noto‘g‘rilik:
+   1) 301-qurilma yoki 201-xodim ro‘yxatda umuman ko‘rinmaydi (na sahifalash,
+      na qidiruv bo‘yicha ogohlantirish yo‘q — foydalanuvchi "yo‘q" deb o‘ylaydi).
+   2) Yuqoridagi "badge" `| length` — ya‘ni EKRANDA KO‘RINGAN sonni ko‘rsatadi,
+      jami emas. 500 qurilma bo‘lsa ham "300" deb turadi.
+  Sahifalash faqat /assets (assets.py:144) va /movements da bor.
+Tuzatish:
+  * `count()` funksiyalari allaqachon bor (employee_service.count:340,
+    equipment_service'da ham shunga o‘xshash qo‘shish oson) -> badge = jami.
+  * `?page=` + `per_page=50` qo‘shish (/assets dagi naqshni ko‘chirish).
+  * Kamida: "300 tadan 1-300 ko‘rsatildi" hinti.
+
+--------------------------------------------------------------------------------
+[E-05]  MEDIUM — Eksport butunlay xotirada quriladi
+--------------------------------------------------------------------------------
+Dalil:
+  app/services/export_service.py:34   MAX_ROWS = 20_000
+  app/services/export_service.py:430,452   stream = io.BytesIO()
+  app/api/downloads.py:121-130         return Response(content=payload, …)
+  app/api/reports.py:51                query_events(db, limit=2000)   # sahifa
+  app/api/reports.py:102               query_events(db, limit=20000)  # CSV
+Muammo:
+  Har bir yuklab olishda: barcha satrlar Python list -> BytesIO -> bitta `bytes`
+  obyekt -> Content-Length. 20 000 satr × keng ustunlar + openpyxl = yuzlab MB
+  RSS. Bir vaqtda 2-3 kishi "Hammasi" ni bossa, 1-2 GB gacha chiqishi mumkin.
+  (Sinxron handler threadpool‘da ishlaydi, ya‘ni event loop qotmaydi, lekin
+  xotira va DB sessiyasi butun qurish davomida ushlab turiladi.)
+Tuzatish:
+  * `openpyxl.Workbook(write_only=True)` yoki CSV uchun generator +
+    `StreamingResponse` (bo‘lak-bo‘lak yuborish).
+  * XLSX da Content-Length yo‘q — bu holda brauzer progress ko‘rsatmaydi,
+    lekin xotira O(1) bo‘ladi. Muqobil: faylni `data/exports/` ga yozib,
+    keyin `FileResponse` bilan berish (resume/Range ham ishlaydi).
+  * `MAX_ROWS` ni `.env` orqali sozlanadigan qilish.
+
+--------------------------------------------------------------------------------
+[E-06]  MEDIUM — Sonni hisoblash uchun satrlar yuklanadi (COUNT emas)
+--------------------------------------------------------------------------------
+Dalil:
+  app/api/pages.py:78        "pending_sync": len(event_service.pending_sync_events(db, limit=1000))
+  app/api/reports.py:60      unsynced = len(event_service.pending_sync_events(db, limit=5000))
+  app/api/reports.py:178     "pending_events": len(event_service.pending_sync_events(db, limit=5000))
+  app/api/sheets_setup.py:58 "unsynced": len(event_service.pending_sync_events(db, limit=5000))
+Muammo:
+  Har bir dashboard/hisobot ochilishida 1 000-5 000 ta ORM obyekt yuklanadi
+  (faqat bitta raqam uchun — 4 joyda). Va limitdan oshsa raqam JIMGINA
+  to‘xtab qoladi: 8 000 ta kutilayotgan bo‘lsa, ekranda 5 000 turadi.
+Tuzatish:
+  `event_service` ga `count_pending_sync(session) -> int` qo‘shish:
+      select(func.count(Event.id)).where(Event.sync_status == SyncStatus.PENDING)
+  Va 4 joyda shu funksiyani ishlatish (5 satr ish).
+
+--------------------------------------------------------------------------------
+[E-07]  MEDIUM — Zaxira nusxa (backup) jadvali va tiklash yo‘li yo‘q
+--------------------------------------------------------------------------------
+Dalil:
+  app/services/schema_migration.py:155-185  backup_database(), BACKUP_PREFIX="pre-migration-"
+  app/services/schema_migration.py:228-229  faqat migratsiya oldidan chaqiriladi
+  grep(app/, "backup") -> boshqa hech qanday joyda backup yo‘q
+Muammo:
+  `data/inventory.db` (117 MB `data/` ichida, shu jumladan biometric rasmlar va
+  evidence stills) uchun KUNDALIK zaxira yo‘q. Migratsiya bo‘lmasa — hech qanday
+  nusxa olinmaydi. Disk buzilishi / noto‘g‘ri DELETE / ransomware = qaytarilmas
+  yo‘qotish (bir necha oylik harakat tarixi, biriktirishlar, audit).
+Tuzatish (eng arzon, eng katta foyda):
+  1) `cleanup_service`/janitor tsikliga kunlik vazifa: har kuni 02:00 da
+     `sqlite3.Connection.backup()` -> data/backups/daily-YYYYMMDD.db,
+     oxirgi 14 nusxa saqlanadi (rotation).
+  2) /settings sahifasida "Hozir zaxira olish" tugmasi + nusxalarni yuklab olish
+     (faqat admin, audit yozuvi bilan).
+  3) INSTALL.txt ga "tiklash" qadami: serverni to‘xtat -> faylni almashtirish ->
+     ishga tushirish.
+
+--------------------------------------------------------------------------------
+[E-08]  LOW-MEDIUM — Login himoyasi faqat jarayon xotirasida
+--------------------------------------------------------------------------------
+Dalil:
+  app/api/auth.py:33-37
+      _MAX_ATTEMPTS = 5 ; _WINDOW_SECONDS = 300
+      _attempts: dict[str, list[float]] = {}      # jarayon ichida
+  app/api/auth.py:40-56  _blocked() / _register_failure()
+Muammo:
+  1) Server qayta ishga tushsa — hisoblagich 0 ga tushadi (brute-force uchun
+     "bepul" oraliq).
+  2) `uvicorn --workers N` yoki bir nechta instans bo‘lsa, har biri o‘z hisobini
+     yuritadi (5×N urinish).
+  3) `_attempts` hech qachon tozalanmaydi: `_blocked()` faqat o‘zi tekshirgan
+     kalitni tozalaydi; noto‘g‘ri login qilgan har xil username|IP kalitlari
+     xotirada abadiy qoladi (sekin memory leak).
+Tuzatish:
+  * DB jadvali `login_attempts(key, created_at)` yoki `slowapi` (Redis/memory).
+  * Yoki hech bo‘lmasa: `_attempts` ni vaqti-vaqti bilan tozalash (janitor).
+  * Reverse proxy orqasida `request.client.host` emas, `X-Forwarded-For` (ishonchli
+    proxy) ishlatilishini hujjatlashtirish.
+
+--------------------------------------------------------------------------------
+[E-09]  LOW-MEDIUM — Parol o‘zgarganda eski sessiyalar bekor qilinmaydi
+--------------------------------------------------------------------------------
+Dalil:
+  app/api/auth.py:188-192  faqat `user.password_hash` yangilanadi
+  app/main.py:73-75        session cookie: max_age=SESSION_MAX_AGE_SECONDS (12 soat)
+  app/api/deps.py:117-125  har so‘rovda faqat `is_active` qayta tekshiriladi
+Muammo:
+  Parol o‘g‘irlangan bo‘lsa va egasi parolni almashtirsa — hujumchining sessiyasi
+  yana 12 soat ishlayveradi. `is_active=False` esa darhol ishlaydi (yaxshi).
+Tuzatish:
+  * `User` ga `session_epoch: int` (yoki `password_changed_at`) qo‘shish;
+    login da sessiyaga epoch yozish; `deps.current_user` da solishtirish —
+    mos kelmasa sessiyani tozalash. Migratsiya additiv (yangi ustun).
+  * "Barcha qurilmalardan chiqish" tugmasi shu mexanizm bilan bepul keladi.
+
+--------------------------------------------------------------------------------
+[E-10]  LOW — /healthz hamma uchun ochiq va ichki holatni oshkor qiladi
+--------------------------------------------------------------------------------
+Dalil:
+  app/main.py:144-151
+      return {"status": "ok", "monitoring": monitor.is_started,
+              "cameras_running": sum(...)}
+Muammo:
+  Auth yo‘q. Tashqi kuzatuvchiga tizim turgan-turmaganligi va nechta kamera
+  ishlayotgani ko‘rinadi (razvedka ma‘lumoti).
+Tuzatish: `{"status": "ok"}` qoldirish (uptime uchun yetarli) yoki
+  `HEALTH_TOKEN` header bilan batafsil javob.
+
+--------------------------------------------------------------------------------
+[E-11]  LOW — Audit jurnali interfeysda faqat oxirgi 40 yozuv
+--------------------------------------------------------------------------------
+Dalil:
+  app/api/settings.py:45   "audit": audit_service.recent(db, limit=40)
+Muammo:
+  "Kim bu qurilmani o‘chirdi?", "kim parolni almashtirdi?" degan savolga
+  javob berish uchun 40 satrdan nariga o‘tib bo‘lmaydi (filtr/qidiruv/sahifalash
+  yo‘q). Ma‘lumot bazada bor va /downloads orqali eksport qilinadi — lekin
+  interfeysdan ko‘rib bo‘lmaydi.
+Tuzatish: `/settings` dan alohida `/audit` sahifasi: sana oralig‘i, foydalanuvchi,
+  amal (action) bo‘yicha filtr + sahifalash + CSV.
+
+--------------------------------------------------------------------------------
+[E-12]  LOW — /assets/events: 200 yozuv qattiq chegarasi, sahifalash yo‘q
+--------------------------------------------------------------------------------
+Dalil:
+  app/api/assets.py:195   movement_history(db, pending_only=pending_only, limit=200)
+Muammo: eski yozuvlarni ko‘rishning yo‘li yo‘q (sana filtri ham yo‘q).
+Tuzatish: `/assets/events?page=` + sana oralig‘i (movement_history allaqachon
+  `limit`/`offset` naqshiga ega bo‘lishi oson).
+
+--------------------------------------------------------------------------------
+[E-13]  LOW — Git ga Word ning vaqtinchalik "lock" fayli qo‘shilgan
+--------------------------------------------------------------------------------
+Dalil:
+  git ls-files docs  ->  docs/~$RIQNOMA-face-date.docx
+Muammo: Word ochiq qolganda yaratiladigan chiqindi fayl repoda. Hujjatlar
+  papkasini iflos qiladi va boshqa kompyuterda "fayl band" kabi g‘alati
+  xatolarga sabab bo‘lishi mumkin.
+Tuzatish:
+  git rm --cached "docs/~$RIQNOMA-face-date.docx"
+  .gitignore ga:  ~$*  va  *.docx~  qo‘shish.
+
+--------------------------------------------------------------------------------
+[E-14]  LOW — Hujjatlarda Python versiyasi noto‘g‘ri ko‘rsatilgan
+--------------------------------------------------------------------------------
+Dalil:
+  requirements.txt:2   "# Verified environment: Python 3.11.9 ..."
+  INSTALL.txt:9        "Tekshirilgan muhit: ... Python 3.11.9 x64"
+  INSTALL.txt:53-56    "Python 3.11.x ... * 3.12 / 3.13 da torch va insightface
+                        wheel'lari mos kelmasligi mumkin"
+  Haqiqat (tekshirildi):
+      .venv\Scripts\python.exe -V            -> Python 3.12.10
+      torch 2.14.1+cpu, ultralytics 8.4.199, insightface OK, fastapi 0.115.14
+Muammo: yo‘riqnomaga amal qilgan yangi o‘rnatuvchi `py -3.11 -m venv` qiladi va
+  hozir tekshirilgan muhitdan boshqa muhit oladi (yoki 3.11 ni topolmay qiynaladi).
+Tuzatish: ikkala faylda "Python 3.12.10 (tekshirilgan)" deb yozish, 3.11 ni
+  "muqobil" sifatida qoldirish. requirements-ai.txt dagi izohlar ham shunga
+  moslashtirilsin.
+
+--------------------------------------------------------------------------------
+[E-15]  LOW — .gitignore barcha *.json fayllarni bloklaydi
+--------------------------------------------------------------------------------
+Dalil:
+  .gitignore:20   *.json
+  .gitignore:21   !config/*.example.json
+Muammo: har qanday JSON (test fixture, YOLO dataset konfiguratsiyasi, postman
+  kolleksiyasi, `coco8.yaml` yonidagi `*.json`) "jimgina" commit qilinmay qoladi —
+  `git add .` xato bermaydi, shuning uchun sezilmaydi. Maxfiy fayllar uchun
+  aniqroq naqsh allaqachon bor (22-23 satrlar).
+Tuzatish: `*.json` ni olib tashlab, `secrets/`, `service_account*.json`,
+  `google_credentials*.json`, `config/*.local.json` bilan cheklash.
+
+--------------------------------------------------------------------------------
+[E-16]  LOW — Kamera/pipeline oqimlari uchun "watchdog" yo‘q
+--------------------------------------------------------------------------------
+Dalil:
+  app/services/monitoring_service.py:138-162  start_camera() — bir marta ishga tushadi
+  app/services/monitoring_service.py:287+     health() — faqat hisobot beradi
+  app/services/pipeline_service.py:763-791    _run() — himoyalangan, lekin tashqi
+                                              `worker.drain()` xatosi oqimni o‘ldirishi mumkin
+Muammo: oqim o‘lib qolsa, uni qayta tiklaydigan kod yo‘q; holat faqat /cameras
+  sahifasida `running:false` ko‘rinishida bilinadi (ya‘ni kimdir ochib ko‘rmaguncha).
+Tuzatish: janitor tsikli (har 60 s) `not thread.is_alive()` bo‘lsa qayta
+  `start_camera()` chaqirsin + log + (keyinroq) ogohlantirish.
+
+--------------------------------------------------------------------------------
+[E-17]  LOW — Bildirishnoma (notification) kanali umuman yo‘q
+--------------------------------------------------------------------------------
+Dalil: grep(app/, "smtplib|telegram|webhook|notify") -> 0 natija.
+Muammo: "tasdiqlash kutilayotgan harakat" va "kamera OFFLINE" hodisalari faqat
+  sahifani ochib ko‘rganda bilinadi. 24/7 monitoring tizimi uchun bu asosiy
+  funksiya yetishmayapti.
+
+--------------------------------------------------------------------------------
+[E-18]  INFO — Repo ildizida chiqindi artefaktlar
+--------------------------------------------------------------------------------
+  server.log            (ishlab chiqishda qolgan; .gitignore uni bloklaydi, lekin
+                         fayl turibdi — o‘chirish tavsiya etiladi)
+  data-anliz-dxm/       bo‘sh papka
+  face-datactions/      bo‘sh papka
+  secrets/              bo‘sh (git bo‘sh papkani kuzatmaydi, zarar yo‘q)
+  ai_training/          8 fayl (git kuzatmaydi) — lokallashtirish yoki hujjatlashtirish
+
+--------------------------------------------------------------------------------
+[E-19]  INFO — Biometrik ma‘lumotlar shifrlanmagan holda diskda
+--------------------------------------------------------------------------------
+  data/employees/*.jpg, data/evidence/*.jpg, data/inventory.db — ochiq fayllar.
+  Kod tomonidan himoya to‘g‘ri (auth + ruxsat), lekin DISK tomonidan emas.
+Tavsiya: BitLocker/disk shifrlash, papkaga NTFS ACL (faqat servis hisobi),
+  INSTALL.txt ga eslatma. Evidence uchun retention allaqachon kodda bor va
+  sukut bo‘yicha 30 kun (config.py:220, EVIDENCE_RETENTION_DAYS=30,
+  cleanup_service.purge_evidence) — qo‘shimcha ish shart emas, faqat qiymatni
+  biznes talabiga moslash kifoya.
+
+--------------------------------------------------------------------------------
+[E-20]  INFO — Ikki xil "jihoz" sahifasi bor
+--------------------------------------------------------------------------------
+  /equipment  — eski inventar (EquipmentAsset, asset_code, kategoriya, holat)
+  /assets     — yangi QR modul (yorliq, biriktirish, tarix, monitoring)
+Muammo: foydalanuvchi qaysi birini ishlatishini bilmaydi; maydonlar ustma-ust.
+Tavsiya: navigatsiyada izoh ("/assets — QR yorliqli inventar; /equipment — eski
+  ro‘yxat"), yoki keyingi bosqichda /equipment ni /assets ga yo‘naltirish (redirect)
+  va bitta sahifaga birlashtirish.
+
+
+================================================================================
+3. KAMCHILIKLAR — ishlaydi, lekin yetishmaydi  (G-xx)
+================================================================================
+
+[G-01] Test qamrovi bo‘shliqlari
+   Testi yo‘q modullar (grep bilan tasdiqlandi):
+     * app/services/monitoring_service.py  (kamera ishga tushirish/stop, reload)
+     * app/services/pipeline_service.py    (faqat bilvosita; _persist yo‘llari)
+     * app/services/schema_migration.py    (faqat test_asset_qr ichida bir marta)
+     * app/services/bootstrap.py           (birinchi admin yaratilishi)
+     * app/services/settings_service.py    (update_env — .env ni qayta yozish!)
+   Mavjud: 22 test fayl, 325 test — bu yaxshi, lekin eng "xavfli" qismlar
+   (thread'lar, migratsiya, .env yozish) qamrab olinmagan.
+
+[G-02] Qamrov o‘lchanmaydi
+   pytest.ini da `--cov` yo‘q, requirements.txt da `pytest-cov` yo‘q. Ya‘ni
+   "qancha kod tekshirilgan" degan savolga javob berib bo‘lmaydi.
+
+[G-03] CI (avtomatik test) yo‘q
+   .github/workflows/ yo‘q, Dockerfile yo‘q, pyproject.toml/ruff konfiguratsiyasi
+   yo‘q. Har bir o‘zgarish qo‘lda `pytest` bilan tekshiriladi — regressiya
+   ehtimoli vaqt o‘tishi bilan oshadi.
+
+[G-04] Health/readiness farqlanmaydi
+   /healthz bor, lekin: DB ochiladimi? model yuklandimi? disk joyi bormi? —
+   bularni aytmaydi. `/readyz` (bog‘liqliklar tayyor) va `/metrics`
+   (Prometheus) yo‘q.
+
+[G-05] Parol siyosati juda yumshoq
+   auth.py:140 va :185 — faqat `len(password) >= 8`. Katta harf/raqam/belgi,
+   takroriy parol, muddati o‘tishi, 2FA yo‘q (tashqi tarmoqqa chiqarilsa muhim).
+
+[G-06] CSV/Excel import yo‘q
+   Xodimlar va qurilmalarni faqat forma bilan bittalab kiritish mumkin.
+   200 xodimni ko‘chirish = 200 marta forma (yoki scripts/ orqali kod yozish).
+
+[G-07] Inventar "audit sessiyasi" yo‘q
+   `inventory_service` da tasdiqlash oqimi bor, lekin "kutilgan ro‘yxat vs
+   topilgan" taqqoslashi (yo‘qolgan/ortiqcha qurilmalar) bir tugmada emas.
+
+[G-08] Mobil QR skan sahifasi yo‘q
+   Yorliqni faqat server kamerasidan yoki telefon kamerasidan (tashqi ilova)
+   o‘qish mumkin. `/qr/{token}` havolasi ishlaydi, lekin telefonda skanerlab
+   darhol ochadigan sahifa (BarcodeDetector / html5-qrcode) yo‘q.
+   grep(app/ui, "BarcodeDetector|html5-qrcode|jsQR|getUserMedia") -> 0 natija.
+
+[G-09] Integratsiya uchun API token yo‘q
+   Barcha API lar sessiya cookie + CSRF talab qiladi — tashqi tizim (1C, ERP)
+   uchun "service token" yo‘li yo‘q.
+
+[G-10] Bildirishnoma va eslatmalar yo‘q (E-17 bilan bir xil ildiz)
+   Profilaktika muddati (maintenance) yaqinlashganda eslatma yo‘q.
+
+[G-11] Hujjatlar tarqoq
+   docs/ ichida: INSTALL.txt (ildizda), README.md, docs/yoriqnoma_uz.md,
+   docs/yolo_training.md, .docx/.pdf. Yagona "indeks" sahifasi yo‘q; audit
+   hisoboti ham shu sababdan alohida fayl bo‘lib qoldi.
+
+[G-12] Interfeys tarjimasi (i18n) infratuzilmasi yo‘q
+   Matnlar to‘g‘ridan-to‘g‘ri shablonlarda o‘zbekcha. Rus/ingliz kerak bo‘lsa,
+   har bir shablonni qo‘lda tahrirlash kerak.
+
+
+================================================================================
+4. NIMA QO‘SHISH MUMKIN — reja (A-xx)
+================================================================================
+Har bir band: nima beradi / taxminiy mehnat / tavsiya etilgan joy.
+
+[A-01]  Kunlik avtomatik backup + tiklash tugmasi            (E-07)
+        Foyda: eng katta (ma‘lumot yo‘qotishdan himoya).  Mehnat: ~0.5 kun.
+        Joy: cleanup_service (janitor tsikli) + /settings + audit yozuvi.
+
+[A-02]  Telegram ogohlantirishlari                           (E-17, G-10)
+        Foyda: 24/7 rejimning haqiqiy ma‘nosi.  Mehnat: ~1 kun.
+        Joy: app/services/notify_service.py (yangi), .env: TELEGRAM_BOT_TOKEN,
+             TELEGRAM_CHAT_ID, NOTIFY_EVENTS=PENDING_MOVEMENT,CAMERA_OFFLINE.
+        Chaqirish nuqtalari: asset_service.record_* (PENDING bo‘lganda),
+        monitoring_service._on_status_change (OFFLINE ga o‘tganda).
+        Muhim: yuborishni fonda (thread) qilish — HTTP so‘rovni bloklamasin.
+
+[A-03]  Telefon bilan QR skanerlash sahifasi                  (G-08)
+        Foyda: yorliqni ko‘zdan kechirish 10 barobar tez.  Mehnat: ~1 kun.
+        Joy: /scan sahifasi + JS `BarcodeDetector` (Chrome/Edge) yoki
+        html5-qrcode (zaxira). Skanerlaganda /qr/{token} mantiqini ishlatish.
+
+[A-04]  Inventar audit sessiyasi                              (G-07)
+        Foyda: "qaysi qurilma yo‘q" savoliga bir tugmada javob.  Mehnat: ~2 kun.
+        Joy: yangi jadval `inventory_audit(id, started_at, closed_at, user_id)` +
+        `inventory_audit_line(audit_id, asset_id, found, snapshot_status)`.
+        Natija: farqlar AssetMovementEvent ga "AUDIT_MISSING"/"AUDIT_EXTRA".
+
+[A-05]  To‘liq audit sahifasi                                 (E-11)
+        Foyda: tekshiruv (kim nima qildi).  Mehnat: ~0.5 kun.
+        Joy: /audit + filtr + sahifalash; export allaqachon bor.
+
+[A-06]  Sahifalash va haqiqiy sonlar                           (E-04, E-12)
+        Foyda: "jimgina kesish" muammosi yo‘qoladi.  Mehnat: ~0.5 kun.
+        Joy: /equipment, /employees, /assets/events.
+
+[A-07]  Streaming eksport                                     (E-05)
+        Foyda: xotira portlashidan himoya.  Mehnat: ~1 kun.
+        Joy: export_service.xlsx_stream() + StreamingResponse.
+
+[A-08]  Watchdog + /readyz + /metrics                          (E-16, G-04)
+        Foyda: kamera jimgina o‘lib qolmaydi.  Mehnat: ~1 kun.
+
+[A-09]  Sessiya epochasi / "hamma qurilmadan chiqish"          (E-09)
+        Foyda: o‘g‘irlangan sessiyani darhol o‘chirish.  Mehnat: ~0.5 kun.
+
+[A-10]  Xavfsizlik sarlavhalari + RTSP parolini yashirish      (E-01, E-02)
+        Foyda: arzon xavfsizlik yutug‘i.  Mehnat: ~2 soat.
+
+[A-11]  CSV/Excel import (xodimlar, qurilmalar)                (G-06)
+        Foyda: boshlang‘ich to‘ldirish daqiqalarda.  Mehnat: ~1 kun.
+        Joy: /settings yoki /employees da "Import" + oldindan ko‘rish (preview)
+        + qator bo‘yicha xato hisoboti.
+
+[A-12]  CI: GitHub Actions (pytest + ruff)                     (G-03)
+        Foyda: regressiyani erta ushlash.  Mehnat: ~2 soat.
+        Joy: .github/workflows/tests.yml (windows-latest, setup-python 3.12,
+        pip install -r requirements.txt, pytest -q).
+
+[A-13]  Qamrov o‘lchovi                                         (G-02)
+        Foyda: "qaysi modul tekshirilmagan" ko‘rinadi.  Mehnat: ~1 soat.
+
+[A-14]  Servis token bilan REST API (1C/ERP integratsiyasi)     (G-09)
+        Foyda: tashqi tizim bilan avtomatik sinxron.  Mehnat: ~2 kun.
+        Joy: `Authorization: Bearer <token>` middleware + faqat o‘qish uchun
+        `/api/v1/assets`, `/api/v1/movements` endpointlari + audit.
+
+[A-15]  Inventar uchun "profilaktika" eslatmalari              (G-10)
+        Foyda: maintenance muddati o‘tib ketmaydi.  Mehnat: ~0.5 kun
+        (A-02 dan keyin deyarli bepul).
+
+[A-16]  Hujjatlar indeksi (docs/README)                        (G-11)
+        Foyda: yangi xodim 5 daqiqada yo‘l topadi.  Mehnat: ~1 soat.
+
+[A-17]  Katta ko‘lamga o‘tish rejasi (PostgreSQL)
+        Hozir SQLite + WAL yetarli (1-4 kamera, yuzlab qurilma). 10+ kamera
+        yoki 2+ server bo‘lsa: PostgreSQL ga ko‘chirish (`DATABASE_URL` allaqachon
+        sozlanadigan), `busy_timeout`/WAL muammolari yo‘qoladi. Hozir qilish
+        SHART EMAS — lekin kod SQLAlchemy orqali yozilgani uchun yo‘l ochiq.
+
+
+================================================================================
+5. TEZ YUTUQLAR — 1 soatdan kam, foydasi yuqori
+================================================================================
+  1. E-01  RTSP parolini formada ko‘rsatmaslik                     (~30 daq)
+  2. E-02  4 ta xavfsizlik sarlavhasi                              (~20 daq)
+  3. E-06  count_pending_sync() + 4 joyda almashtirish             (~20 daq)
+  4. E-13  "docs/~$..." faylini git dan olib tashlash              (~2 daq)
+  5. E-14  Python 3.12.10 deb hujjatlarni to‘g‘rilash              (~10 daq)
+  6. E-15  .gitignore dagi *.json ni toraytirish                   (~5 daq)
+  7. E-10  /healthz ni minimal qilish                              (~5 daq)
+  8. E-03  /equipment dagi GROUP BY hisob                          (~30 daq)
+  9. E-04  badge = haqiqiy jami (count())                          (~20 daq)
+
+
+================================================================================
+6. TEKSHIRILDI VA TO‘G‘RI — "tuzatish" shart emas
+================================================================================
+Quyidagilar bo‘yicha gumon qilish mumkin, lekin tekshiruvda XATO TOPILMADI:
+
+  * Log rotatsiyasi BOR: RotatingFileHandler 5 MB × 5 nusxa
+    (app/utils/logging_config.py:36).
+  * Migratsiya rollback + oldindan nusxa BOR (schema_migration.py:155-185, 213-229).
+  * To‘g‘ri to‘xtatish (graceful shutdown) BOR: main.py:51-55 (lifespan finally ->
+    monitor.stop()), monitoring_service.py:101-116 (thread join, timeout bilan).
+  * Session cookie `httponly` — Starlette SessionMiddleware uni sukut bo‘yicha
+    qo‘yadi (kodda faqat `same_site` va `https_only` ustidan yozilgan).
+  * CSRF: `hmac.compare_digest` bilan (utils/security.py:csrf_valid), har POST da
+    `deps.verify_csrf` (deps.py:111-114).
+  * Open-redirect himoyasi BOR: `safe_next_url` (utils/security.py).
+  * Parol xeshi: PBKDF2-HMAC-SHA256, 260 000 iteratsiya.
+  * Xatolar brauzerga stack trace chiqarmaydi (main.py:98-142, 5 handler).
+  * /api/docs production da o‘chiriladi (main.py:65).
+  * .env git da kuzatilmaydi (.gitignore:2-4), faqat .env.example bor.
+  * SQLite sozlamalari to‘g‘ri: WAL, synchronous=NORMAL, busy_timeout=30 000,
+    check_same_thread=False, timeout=30 (database.py).
+  * Indekslar yetarli: asset_code (unique+index), AssetQrCode.token (unique),
+    "ix_asset_assignment_open", Event.dedupe_key (unique),
+    AssetMovementEvent.dedupe_key (unique).
+  * Vaqt mintaqasi bilan ishlash to‘g‘ri: UTC saqlanadi, `as_utc()` SQLite ning
+    tzinfo yo‘qotishini qoplaydi (utils/time_utils.py:38-42).
+  * QR mantiq: butun piksel modul (interpolatsiyasiz), MIN_MODULE_PX=5,
+    MIN_MM=20 (10 mm o‘lcham o‘qilmasligi tuzatilgan), PRINT_DPI=300.
+  * AssetMonitor ixtiyoriy va throttled (ASSET_MONITOR_INTERVAL), testlarda
+    o‘chirilgan (tests/conftest.py).
+  * Barcha fon oqimlari daemon va `_stop` Event bilan to‘xtaydi.
+  * Evidence retention BOR: EVIDENCE_RETENTION_DAYS=30 sukut bo‘yicha,
+    purge_evidence() janitor tsiklida ishlaydi (config.py:220,
+    cleanup_service.py:201-242).
+  * 325 test o‘tadi; eski funksiyalar (15 sahifa) jonli tekshiruvda 200 qaytardi.
+
+
+================================================================================
+7. TAKRORLASH (repro) — qanday tekshirildi
+================================================================================
+  # barcha testlar
+  .\.venv\Scripts\python.exe -m pytest -q
+
+  # faqat QR/asset moduli
+  .\.venv\Scripts\python.exe -m pytest tests\test_asset_qr.py tests\test_asset_monitor.py -q
+
+  # serverni ishga tushirish
+  .\.venv\Scripts\python.exe run.py            # http://127.0.0.1:8000
+
+  # baza holati
+  .\.venv\Scripts\python.exe -c "import sqlite3;c=sqlite3.connect('data/inventory.db');print(c.execute(\"select name from sqlite_master where type='table' order by name\").fetchall())"
+
+  # Python va AI stek versiyalari
+  .\.venv\Scripts\python.exe -V
+  .\.venv\Scripts\python.exe -c "import torch,ultralytics;print(torch.__version__,ultralytics.__version__)"
+
+  # audit hisobotidagi dalillarni tekshirish (misol)
+  grep -n "value=\"{{ row.camera.source }}\"" app/ui/templates/cameras.html
+  grep -n "len(event_service.pending_sync_events" app/api/*.py
+  grep -n "limit: int =" app/services/equipment_service.py app/services/employee_service.py
+
+================================================================================
+8. YAKUNIY TAVSIYA (3 qadam)
+================================================================================
+  1-QADAM (bugun): E-07 bo‘yicha qo‘lda nusxa olish + kunlik backup vazifasini
+                   rejalashtirish. Ma‘lumot yo‘qotishdan boshqa hech narsa
+                   qaytarilmas.
+  2-QADAM (bu hafta): 5-bo‘limdagi 9 ta "tez yutuq" — jami ~3 soat ish,
+                   sezilarli xavfsizlik va to‘g‘rilik yutug‘i.
+  3-QADAM (keyingi sprint): A-01 (backup UI), A-02 (Telegram), A-06, A-07.
+
+================================================================================
+  Hisobot oxiri.  Barcha da‘volar kod bo‘yicha tekshirilgan (2026-11-05).
+================================================================================

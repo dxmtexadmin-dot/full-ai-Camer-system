@@ -14,7 +14,7 @@ from app.api import deps
 from app.api.cameras import camera_overview
 from app.database import get_db
 from app.models import Camera
-from app.services import employee_service, event_service, inventory_service
+from app.services import asset_service, employee_service, event_service, inventory_service
 from app.services.monitoring_service import get_monitor
 from app.utils.time_utils import local_today
 
@@ -76,6 +76,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
             "sheets": monitor.sheets_service.status(),
             "monitor_started": monitor.is_started,
             "pending_sync": len(event_service.pending_sync_events(db, limit=1000)),
+            "asset_stats": asset_service.stats(db),
         },
         user=user,
     )

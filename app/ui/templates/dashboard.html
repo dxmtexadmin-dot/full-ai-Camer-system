@@ -25,6 +25,31 @@
   </div>
 </div>
 
+{% if asset_stats %}
+<div class="grid cols-4" style="margin-bottom:16px">
+  <div class="kpi">
+    <div class="kpi-label">Qurilmalar (QR)</div>
+    <div class="kpi-value">{{ asset_stats.assets_total }}</div>
+    <div class="kpi-hint">{{ asset_stats.assets_unassigned }} ta biriktirilmagan</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Xodimlarda</div>
+    <div class="kpi-value">{{ asset_stats.assets_assigned }}</div>
+    <div class="kpi-hint">Texnikda: {{ asset_stats.assets_with_technician }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Ta’mirda</div>
+    <div class="kpi-value">{{ asset_stats.assets_in_repair }}</div>
+    <div class="kpi-hint">Joyidan olingan: {{ asset_stats.assets_removed }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Inventar hodisalari</div>
+    <div class="kpi-value {{ 'warn' if asset_stats.pending_asset_events else 'ok' }}">{{ asset_stats.pending_asset_events }}</div>
+    <div class="kpi-hint">Kamera: {{ asset_stats.cameras_online }}/{{ asset_stats.cameras_total }} onlayn</div>
+  </div>
+</div>
+{% endif %}
+
 <div class="split" style="align-items:stretch">
   <div style="flex:1 1 560px;min-width:320px">
     <div class="card">

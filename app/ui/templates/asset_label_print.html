@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Yorliq chop etish — {{ asset.asset_code }}</title>
+<link rel="stylesheet" href="{{ sheet_css_url }}">
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; background: #eef1f6; font-family: "Segoe UI", system-ui, -apple-system, sans-serif; color: #1f2937; }
+  .toolbar {
+    position: sticky; top: 0; z-index: 10; display: flex; flex-wrap: wrap; gap: 10px;
+    align-items: flex-end; padding: 12px 16px; background: #fff; border-bottom: 1px solid #d8dee8;
+  }
+  .toolbar form { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin: 0; }
+  .toolbar label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #64748b; margin-bottom: 3px; }
+  .toolbar input[type="number"], .toolbar input[type="text"], .toolbar select {
+    padding: 6px 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; background: #fff;
+  }
+  .toolbar input[type="number"] { width: 82px; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 13px; border-radius: 6px;
+         border: 1px solid #cbd5e1; background: #fff; font-size: 13px; cursor: pointer;
+         text-decoration: none; color: #1f2937; font-family: inherit; }
+  .btn.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+  .btn.ghost { background: transparent; }
+  .checks { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding-bottom: 8px; }
+  .checks label { display: inline-flex; align-items: center; gap: 4px; font-size: 13px;
+                  text-transform: none; color: #1f2937; }
+  .hint { padding: 8px 16px; font-size: 12px; color: #64748b; background: #fff; border-bottom: 1px solid #e2e8f0; }
+  .hint strong { color: #b45309; }
+  .stage { display: flex; justify-content: center; padding: 18px 10px 40px; }
+  .label-box { background: #fff; box-shadow: 0 6px 20px rgba(15, 23, 42, .18); overflow: hidden; }
+  .label-box img { display: block; width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <form method="get" action="/assets/{{ asset.id }}/print">
+    <div>
+      <label for="size">O'lcham</label>
+      <select id="size" name="size">
+        {% for value, label in sizes %}
+        <option value="{{ value }}" {{ 'selected' if value == size_key else '' }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="w">W (mm)</label>
+      <input id="w" type="number" name="w" min="20" max="210" step="1" placeholder="maxsus">
+    </div>
+    <div>
+      <label for="h">H (mm)</label>
+      <input id="h" type="number" name="h" min="20" max="210" step="1" placeholder="maxsus">
+    </div>
+    <div>
+      <label for="extra_text">Qo'shimcha matn</label>
+      <input id="extra_text" type="text" name="extra_text" maxlength="120" value="{{ options.extra_text }}">
+    </div>
+    <div class="checks">
+      <label><input type="checkbox" name="part" value="qr" {{ 'checked' if options.show_qr else '' }}> QR</label>
+      <label><input type="checkbox" name="part" value="code" {{ 'checked' if options.show_asset_code else '' }}> Inventar</label>
+      <label><input type="checkbox" name="part" value="name" {{ 'checked' if options.show_name else '' }}> Nomi</label>
+      <label><input type="checkbox" name="part" value="model" {{ 'checked' if options.show_model else '' }}> Model</label>
+      <label><input type="checkbox" name="part" value="resp" {{ 'checked' if options.show_responsible else '' }}> Mas'ul</label>
+      <label><input type="checkbox" name="part" value="org" {{ 'checked' if options.show_org else '' }}> Tashkilot</label>
+    </div>
+    <input type="hidden" name="parts_submitted" value="1">
+    <button class="btn" type="submit">Qo'llash</button>
+  </form>
+  <button class="btn primary" type="button" id="print-btn">Chop etish</button>
+  <a class="btn ghost" href="/assets/{{ asset.id }}">← Qurilmaga qaytish</a>
+  <a class="btn ghost" href="/assets/{{ asset.id }}/qr.png?download=1">QR PNG yuklab olish</a>
+</div>
+<div class="hint">
+  <strong>Muhim:</strong> chop etishda masshtab <strong>100%</strong> (Actual size / Haqiqiy o'lcham) bo'lsin,
+  "Fit to page" yoki "Scale to fit"ni o'chiring — aks holda yorliq o'lchami o'zgaradi va QR skanerlanmasligi mumkin.
+</div>
+
+<div class="stage">
+  <div class="label-box">
+    <img src="/assets/{{ asset.id }}/label.png?{{ query_string }}" alt="Yorliq {{ asset.asset_code }}">
+  </div>
+</div>
+
+<div id="print-data" hidden
+     data-asset-id="{{ asset.id }}"
+     data-size="{{ size_key }}"
+     data-csrf="{{ csrf_token }}"></div>
+
+<script>
+  (function () {
+    var data = document.getElementById('print-data');
+    var button = document.getElementById('print-btn');
+    if (!data || !button) { return; }
+
+    button.addEventListener('click', function () {
+      var size = encodeURIComponent(data.dataset.size || '');
+      fetch('/api/assets/' + data.dataset.assetId + '/qr/mark-printed?size=' + size, {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': data.dataset.csrf },
+        credentials: 'same-origin'
+      }).catch(function () { /* printing must not be blocked by the audit call */ });
+      window.print();
+    });
+  })();
+</script>
+</body>
+</html>

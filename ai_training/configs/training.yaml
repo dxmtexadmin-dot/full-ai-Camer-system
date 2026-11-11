@@ -1,0 +1,31 @@
+# Custom YOLO o'qitish sozlamalari (ai_training muhiti uchun).
+#
+# Bu fayl faqat `ai_training/scripts/train.py` tomonidan o'qiladi.
+# Asosiy ilova (`app/`) bu faylni ko'rmaydi va unga bog'lanmaydi.
+#
+# RTX 5070 (12 GB) uchun tanlangan qiymatlar: imgsz 640 + batch 16 ~ 6-7 GB VRAM.
+# VRAM yetmasa (`CUDA out of memory`) batch ni 8 ga tushiring yoki imgsz 512 qiling.
+
+model: yolo26m.pt          # pretrained checkpoint (ai_training/models/ ga yuklanadi)
+data: ai_training/dataset/data.yaml
+
+epochs: 100
+imgsz: 640
+batch: 16
+patience: 25               # yaxshilanish bo'lmasa erta to'xtash
+device: 0                  # 0 = birinchi CUDA GPU, "cpu" = CPU
+workers: 8
+seed: 0
+amp: true                  # mixed precision (GPU da tezroq)
+cos_lr: true
+optimizer: auto
+cache: false               # dataset kichik bo'lsa true qilsa tezroq, RAM yeydi
+
+project: ai_training/runs  # natijalar shu yerga (gitignore qilingan)
+name: candidate            # har run uchun vaqt qo'shiladi
+
+# Quyidagi chegaralar `scripts/export.py` va `evaluate.py` da tekshiriladi.
+acceptance:
+  min_mAP50: 0.60          # shundan past bo'lsa candidate "productionga tayyor emas"
+  min_person_recall: 0.70  # `person` sinfi tizimning tayanchi
+  max_cpu_latency_ratio: 1.50  # candidate CPU da production modeldan 1.5x dan sekin bo'lmasin

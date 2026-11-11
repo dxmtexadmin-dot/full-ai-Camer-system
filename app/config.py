@@ -103,6 +103,11 @@ class Settings:
     evidence_retention_days: int
     evidence_jpeg_quality: int
 
+    # QR inventory: read device labels on the live camera feed. Off by default so
+    # the existing camera behaviour is untouched until an operator opts in.
+    asset_monitor_enabled: bool
+    asset_monitor_interval: int
+
     google_sheets_enabled: bool
     google_spreadsheet_id: str
     google_service_account_file: Optional[Path]
@@ -214,6 +219,8 @@ def _build_settings() -> Settings:
         evidence_enabled=_bool("EVIDENCE_ENABLED", True),
         evidence_retention_days=max(1, _int("EVIDENCE_RETENTION_DAYS", 30)),
         evidence_jpeg_quality=min(100, max(40, _int("EVIDENCE_JPEG_QUALITY", 85))),
+        asset_monitor_enabled=_bool("ASSET_MONITOR_ENABLED", False),
+        asset_monitor_interval=max(1, _int("ASSET_MONITOR_INTERVAL", 5)),
         google_sheets_enabled=_bool("GOOGLE_SHEETS_ENABLED", False),
         google_spreadsheet_id=_str("GOOGLE_SPREADSHEET_ID", ""),
         google_service_account_file=service_account_path,

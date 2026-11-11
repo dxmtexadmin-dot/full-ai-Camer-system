@@ -14,6 +14,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.api import deps
 from app.api import (
+    assets,
     auth,
     cameras,
     downloads,
@@ -82,6 +83,7 @@ def create_app() -> FastAPI:
         auth,
         employees,
         equipment,
+        assets,
         cameras,
         events,
         maintenance,

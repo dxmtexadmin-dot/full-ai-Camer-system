@@ -28,6 +28,9 @@ numpy==2.2.6
 opencv-python==4.10.0.84
 Pillow==10.4.0
 
+# QR inventory labels (device labels, A4 sheets, PNG download)
+qrcode==8.0
+
 # Configuration and timezone data (Windows zoneinfo)
 python-dotenv==1.0.1
 tzdata==2024.2

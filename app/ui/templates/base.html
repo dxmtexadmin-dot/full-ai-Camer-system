@@ -1,4 +1,6 @@
 {% set path = request.url.path %}
+{% set asset_events_active = path.startswith('/assets/events') %}
+{% set assets_active = (path == '/assets' or path.startswith('/assets/') or path.startswith('/qr/') or path.startswith('/assets-print')) and not asset_events_active %}
 <!DOCTYPE html>
 <html lang="uz">
 <head>
@@ -34,6 +36,9 @@
         <span class="nav-icon">▣</span> Jihozlar
       </a>
       {% endif %}
+      <a href="/assets" class="{{ 'active' if assets_active else '' }}">
+        <span class="nav-icon">⌗</span> Qurilmalar (QR)
+      </a>
       <a href="/inventory" class="{{ 'active' if path.startswith('/inventory') else '' }}">
         <span class="nav-icon">≡</span> Inventarizatsiya
       </a>
@@ -54,6 +59,12 @@
       <a href="/reports" class="{{ 'active' if path.startswith('/reports') else '' }}">
         <span class="nav-icon">▦</span> Hisobotlar
       </a>
+      {% if is_operator %}
+      <a href="/assets/events" class="{{ 'active' if asset_events_active else '' }}">
+        <span class="nav-icon">⚑</span> Inventar hodisalari
+        {% if review_pending %}<span class="nav-badge">{{ review_pending }}</span>{% endif %}
+      </a>
+      {% endif %}
 
       {% if is_admin %}
       <div class="nav-group">Boshqaruv</div>

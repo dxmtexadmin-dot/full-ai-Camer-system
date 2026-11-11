@@ -16,12 +16,16 @@ from sqlalchemy.orm import Session
 from app.config import PROJECT_ROOT, get_settings
 from app.models import User
 from app.models.enums import (
+    AssetMovementType,
+    AssignmentKind,
     Direction,
     EquipmentStatus,
     EventType,
+    RepairStatus,
     Role,
     SyncStatus,
     TransactionType,
+    UsageAction,
     VerificationStatus,
 )
 from app.utils.security import SESSION_CSRF_KEY, SESSION_NOTICE_KEY, SESSION_USER_KEY, csrf_valid, new_csrf_token
@@ -79,6 +83,10 @@ def _build_templates() -> Jinja2Templates:
             "TransactionType": TransactionType,
             "EquipmentStatus": EquipmentStatus,
             "SyncStatus": SyncStatus,
+            "AssignmentKind": AssignmentKind,
+            "RepairStatus": RepairStatus,
+            "AssetMovementType": AssetMovementType,
+            "UsageAction": UsageAction,
             "today": local_today,
         }
     )
@@ -170,6 +178,7 @@ def render(
         "now": datetime.now(workplace_timezone()),
         "is_admin": bool(user and user.is_admin),
         "is_operator": bool(user and user.role_enum in {Role.ADMIN, Role.OPERATOR}),
+        "is_technician": bool(user and user.role_enum == Role.TECHNICIAN),
         # Nav badge next to "Tekshirish kerak" (base.html). Routes that know the
         # real queue length override it; the others simply show no badge.
         "review_pending": 0,

@@ -32,7 +32,7 @@ from app.models.enums import (
     EventType,
     VerificationStatus,
 )
-from app.services import evidence_service, event_service, overlay
+from app.services import asset_monitor, evidence_service, event_service, overlay
 from app.services.association_service import AssociationEngine
 from app.services.camera_service import CameraConfig, CameraWorker
 from app.services.face_service import FaceService, expand_person_crop, get_face_service
@@ -722,6 +722,15 @@ class CameraPipeline:
         self.events_created = 0
         self.processing_errors = 0
 
+        # QR inventory: opt-in. ``None`` means the previous behaviour is kept.
+        self.asset_monitor = asset_monitor.build(self.config.code, self.session_scope, self.settings)
+        if self.asset_monitor is not None:
+            logger.info(
+                "QR kuzatuvi yoqildi: kamera %s (har %.1f s)",
+                self.config.code,
+                self.asset_monitor.interval,
+            )
+
     # -- lifecycle -------------------------------------------------------
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -772,6 +781,9 @@ class CameraPipeline:
                 )
                 self.worker.publish_annotated(annotated)
                 self._persist(result.crossings, result.movements, result.possessions, annotated)
+                if self.asset_monitor is not None:
+                    # Reads device labels on the same frame; failures stay inside.
+                    self.asset_monitor.observe(frame)
             except Exception:  # pragma: no cover - defensive: keep the camera alive
                 self.processing_errors += 1
                 logger.exception("Pipeline xatosi (%s)", self.config.code)

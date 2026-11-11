@@ -26,6 +26,8 @@ os.environ["PROCESSING_FPS"] = "10"
 os.environ["CAMERA_RECONNECT_INTERVAL"] = "1"
 os.environ["CAMERA_MAX_RETRY_INTERVAL"] = "2"
 os.environ["EVIDENCE_ENABLED"] = "true"
+# The QR label reader must stay off in tests: it would decode frames per camera.
+os.environ["ASSET_MONITOR_ENABLED"] = "false"
 os.environ["BOOTSTRAP_ADMIN_USERNAME"] = "admin"
 os.environ["BOOTSTRAP_ADMIN_PASSWORD"] = "Admin123!"
 os.environ["APP_SECRET_KEY"] = "test-only-secret-key"
@@ -85,6 +87,25 @@ def other_user_factory(session):
         return user
 
     return _create
+
+
+@pytest.fixture()
+def asset(session, admin_user):
+    """One registered device with its QR label (shared by the QR inventory tests)."""
+    from app.services import asset_service
+
+    item = asset_service.create_asset(
+        session,
+        category_code="desktop_pc",
+        asset_code="PC-001",
+        name="Buxgalteriya kompyuteri",
+        room="201-xona",
+        department="Buxgalteriya",
+        model="OptiPlex 7010",
+        user=admin_user,
+    )
+    session.commit()
+    return item
 
 
 @pytest.fixture()

@@ -13,6 +13,7 @@ class StrEnum(str, Enum):
 class Role(StrEnum):
     ADMIN = "admin"
     OPERATOR = "operator"
+    TECHNICIAN = "technician"
     VIEWER = "viewer"
 
     @property
@@ -20,6 +21,7 @@ class Role(StrEnum):
         return {
             Role.ADMIN: "Administrator",
             Role.OPERATOR: "Operator",
+            Role.TECHNICIAN: "Texnik",
             Role.VIEWER: "Kuzatuvchi",
         }[self]
 
@@ -194,3 +196,92 @@ class AssociationQuality(StrEnum):
     WEAK = "WEAK"
     AMBIGUOUS = "AMBIGUOUS"
     NONE = "NONE"
+
+
+# ---------------------------------------------------------------------------
+# QR inventory module
+# ---------------------------------------------------------------------------
+class AssignmentKind(StrEnum):
+    RESPONSIBLE = "RESPONSIBLE"  # doimiy mas'ul xodim
+    TEMPORARY = "TEMPORARY"  # vaqtincha olgan shaxs
+    TECHNICIAN = "TECHNICIAN"  # texnik xizmat uchun biriktirilgan
+
+    @property
+    def label_uz(self) -> str:
+        return {
+            AssignmentKind.RESPONSIBLE: "Mas’ul xodim",
+            AssignmentKind.TEMPORARY: "Vaqtinchalik foydalanuvchi",
+            AssignmentKind.TECHNICIAN: "Texnik xizmat",
+        }[self]
+
+
+class RepairStatus(StrEnum):
+    OPEN = "OPEN"
+    IN_PROGRESS = "IN_PROGRESS"
+    DONE = "DONE"
+    RETURNED = "RETURNED"
+    CANCELLED = "CANCELLED"
+
+    @property
+    def label_uz(self) -> str:
+        return {
+            RepairStatus.OPEN: "Qabul qilindi",
+            RepairStatus.IN_PROGRESS: "Ta’mirlanmoqda",
+            RepairStatus.DONE: "Ta’mirlandi",
+            RepairStatus.RETURNED: "Qaytarildi",
+            RepairStatus.CANCELLED: "Bekor qilindi",
+        }[self]
+
+
+class AssetMovementType(StrEnum):
+    TAKEN_OUT = "TAKEN_OUT"
+    RETURNED = "RETURNED"
+    MOVED = "MOVED"
+    QR_SCANNED = "QR_SCANNED"
+    UNIDENTIFIED = "UNIDENTIFIED"
+
+    @property
+    def label_uz(self) -> str:
+        return {
+            AssetMovementType.TAKEN_OUT: "Joyidan olib chiqildi",
+            AssetMovementType.RETURNED: "Joyiga qaytarildi",
+            AssetMovementType.MOVED: "Joyi o‘zgartirildi",
+            AssetMovementType.QR_SCANNED: "QR kod o‘qildi",
+            AssetMovementType.UNIDENTIFIED: "Aniq identifikatsiya qilinmagan",
+        }[self]
+
+
+class UsageAction(StrEnum):
+    CREATED = "CREATED"
+    UPDATED = "UPDATED"
+    ASSIGNED = "ASSIGNED"
+    TRANSFERRED = "TRANSFERRED"
+    RELEASED = "RELEASED"
+    TEMPORARY_TAKEN = "TEMPORARY_TAKEN"
+    TEMPORARY_RETURNED = "TEMPORARY_RETURNED"
+    REPAIR_RECEIVED = "REPAIR_RECEIVED"
+    REPAIR_FINISHED = "REPAIR_FINISHED"
+    REPAIR_RETURNED = "REPAIR_RETURNED"
+    QR_ISSUED = "QR_ISSUED"
+    QR_SCANNED = "QR_SCANNED"
+    COMMENT = "COMMENT"
+    CORRECTION = "CORRECTION"
+
+    @property
+    def label_uz(self) -> str:
+        return {
+            UsageAction.CREATED: "Ro‘yxatga olindi",
+            UsageAction.UPDATED: "Ma’lumot yangilandi",
+            UsageAction.ASSIGNED: "Xodimga biriktirildi",
+            UsageAction.TRANSFERRED: "Boshqa xodimga o‘tkazildi",
+            UsageAction.RELEASED: "Biriktirish yopildi",
+            UsageAction.TEMPORARY_TAKEN: "Vaqtincha olindi",
+            UsageAction.TEMPORARY_RETURNED: "Vaqtincha qaytarildi",
+            UsageAction.REPAIR_RECEIVED: "Ta’mirga qabul qilindi",
+            UsageAction.REPAIR_FINISHED: "Ta’mir yakunlandi",
+            UsageAction.REPAIR_RETURNED: "Ta’mirdan qaytarildi",
+            UsageAction.QR_ISSUED: "QR kod yaratildi",
+            UsageAction.QR_SCANNED: "QR skanerlandi",
+            UsageAction.COMMENT: "Izoh qo‘shildi",
+            UsageAction.CORRECTION: "Tuzatish kiritildi",
+        }[self]
